@@ -1,0 +1,10 @@
+# credenciais — nunca versionar
+.env
+
+# saída gerada
+ATE*.pptx
+conferencia/
+__pycache__/
+
+# params de execuções específicas (o params.json de exemplo fica versionado)
+params-*.json
