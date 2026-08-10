@@ -1,10 +1,13 @@
 # credenciais — nunca versionar
 .env
 
+# dados de cliente — tudo isto é local, não entra no repositório
+robos.csv
+params.json
+params-*.json
+logos/
+
 # saída gerada
 ATE*.pptx
 conferencia/
 __pycache__/
-
-# params de execuções específicas (o params.json de exemplo fica versionado)
-params-*.json

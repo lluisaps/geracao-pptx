@@ -193,6 +193,14 @@ def escrever_grafico(chart, categorias, series):
         c = _cache_de(ser, "val")
         if c is not None:
             _regravar_cache(c, valores)
+            # Cada série do template trazia seu próprio formatCode, e o rótulo
+            # herda dele: sem isto uma série sai "12.765" e a vizinha "12964",
+            # e o zero sai "-" numa e "0" na outra.
+            fmt = c.find(qc("formatCode"))
+            if fmt is None:
+                fmt = c.makeelement(qc("formatCode"), {})
+                c.insert(0, fmt)
+            fmt.text = "#,##0"
 
 
 # posição da nota de assertividade no slide 4, em pontos (mesma unidade do
@@ -284,13 +292,22 @@ def gerar(params, saida):
     escrever(p_corpo, cfg["escopo_objetivo"], r_normal, r_marca)
 
     # ------------------------------------------------- slide 4: execuções
-    # Uma barra por mês, com o TOTAL de execuções do mês. A quebra por status
-    # da consulta serve só para a assertividade (Sucesso / total), não vira
-    # categoria do eixo.
+    # Dois formatos. O normal é uma barra por mês, com o TOTAL do mês — a
+    # quebra por status serve só para a assertividade, não vira eixo. O outro
+    # é o quebrado (por portal, cliente ou etapa): uma série por mês e uma
+    # categoria por valor, que é a forma original do gráfico no template.
     g = cfg["grafico_execucoes"]
     grafico = achar(s[3], "Gráfico 3").chart
-    escrever_grafico(grafico, g["meses"], [("Execuções", g["execucoes"])])
-    grafico.has_legend = False              # série única: legenda vira ruído
+    quebrado = bool(g.get("series"))
+    if quebrado:
+        escrever_grafico(grafico, g["categorias"],
+                         [(x["nome"], x["valores"]) for x in g["series"]])
+    else:
+        escrever_grafico(grafico, g["meses"], [("Execuções", g["execucoes"])])
+    # com série única a legenda só repetiria a palavra "Execuções"
+    grafico.has_legend = quebrado
+    if quebrado:
+        grafico.legend.include_in_layout = False
     plot = grafico.plots[0]
     plot.has_data_labels = True
     plot.data_labels.show_value = True

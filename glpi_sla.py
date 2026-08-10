@@ -5,7 +5,7 @@ params.json.
 
     set GLPI_APP=...
     set GLPI_USER=...
-    python glpi_sla.py "Cliente Exemplo" 2026-04 2026-06
+    python glpi_sla.py "<cliente>" 2026-04 2026-06
 
 Regras conforme a documentação canônica do indicador (workflow n8n
 "GLPI - Dashboard Indicators", nó MySQL - SLA + Code - Montar Resposta):
