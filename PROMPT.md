@@ -1,111 +1,61 @@
 # Mensagem para pedir um ATE novo
 
-Copie o bloco abaixo, troque o cabeçalho e os textos, anexe o logo e o export
-do GLPI. O resto da estrutura fica igual todo mês.
+Copie o bloco abaixo, troque o cabeçalho e os textos. O resto da estrutura fica
+igual todo mês. Não precisa anexar query, planilha, export do GLPI nem
+credencial: tudo isso sai do `.env` e do `robos.csv`.
 
 ---
 
 ```
-Oi! Preciso do ATE da <<CLIENTE>>.
+Oi! Preciso do ATE deste cliente:
 
 ════════════════════════════════════════════════════════════════════
 CABEÇALHO — é só isto que muda de um mês para o outro
 ════════════════════════════════════════════════════════════════════
-  Cliente:        <<Cliente Exemplo>>
-  Trimestre:      <<Abril, Maio e Junho de 2026>>
-  Competência:    <<Jun/26>>   (opcional — sem isto, use o último mês do trimestre)
-  Tabela do robô: <<yank_00005623>>
+  Cliente:      <<nome do cliente>>
+  Trimestre:    <<Abril, Maio e Junho de 2026>>
+  Competência:  <<Jun/26>>   (opcional — sem isto, o último mês do trimestre)
+  Robô:         (opcional — se eu não puser e o cliente tiver mais de um,
+                 me mostra a lista com o volume de cada e eu escolho)
+  Tabela:       (opcional — só se o robô não estiver no robos.csv)
 
 TUDO daqui para baixo se ajusta ao CLIENTE e ao TRIMESTRE do cabeçalho.
-Onde eu escrever "o cliente" ou "o trimestre", usa o valor de cima — não
-vou repetir o nome nem as datas ao longo da mensagem.
+Não vou repetir o nome do cliente nem as datas ao longo da mensagem: onde
+fizer falta, pega de cima. Se algo no meu texto contradisser o cabeçalho, o
+CABEÇALHO VENCE — aplica e me diz qual foi a divergência.
 
-Deriva sozinho, sem me perguntar:
-  - os argumentos do glpi_sla.py: o cliente e o trimestre;
-  - o logo: o do cliente, em logos/ ou anexado;
-  - o nome do arquivo de saída: ATE-<cliente>-<competência>.pptx;
-  - a query de execuções: reescreve o CASE (números e nomes dos meses),
-    o IN (...) e o YEAR para o trimestre do cabeçalho;
-  - o título do gráfico de execuções: "Execuções - Abr/26, Mai/26, Jun/26";
-  - os meses do gráfico de SLA e o recorte do export do GLPI;
-  - a competência da capa, se eu não tiver preenchido acima.
-
-Se algo no meu texto contradisser o cabeçalho — um mês que não bate, um
-título com outro trimestre —, o CABEÇALHO VENCE. Aplica o cabeçalho e me
-diz qual foi a divergência, para eu conferir se foi engano meu.
-
-O gerador está em https://github.com/lluisaps/geracao-pptx — clona ele e
-segue o README. Me devolve o .pptx pronto. Não precisa commitar nada no
-repositório.
+O projeto já está clonado na tua máquina, com o .env configurado. Se estiver
+desatualizado, roda um "git pull" antes. Não commita nem faça push.
 
 ANEXO
   O logo do cliente, se ele ainda não estiver em logos/ no repositório.
 
 ════════════════════════════════════════════════════════════════════
-EXECUÇÕES  →  slide 4
+DADOS — os dois gráficos saem de comando
 ════════════════════════════════════════════════════════════════════
-A query vai colada aqui na mensagem (ela não fica no repositório):
+Roda os dois, com o cliente e o trimestre do cabeçalho:
 
-    <<COLE AQUI A QUERY DE EXECUÇÕES>>
+    python execucoes.py "<cliente>" <1º mês AAAA-MM> <3º mês AAAA-MM> [robô]
+    python glpi_sla.py  "<cliente>" <1º mês AAAA-MM> <3º mês AAAA-MM>
 
-A query vem escrita para um trimestre qualquer — reescreve para o do
-cabeçalho. O trimestre costuma aparecer em mais de um lugar (CASE, IN, YEAR)
-e todos precisam concordar, senão o resultado vem errado sem nenhum aviso.
-Me mostra a query final antes de rodar.
+Credenciais e conexão vêm do .env. O execucoes.py acha a tabela no robos.csv
+só pelo nome do cliente; o glpi_sla.py descobre a entidade no GLPI do mesmo
+jeito. Se o cliente tiver mais de um robô, o script para e lista as opções
+com o volume de cada uma no período — me mostra essa lista e espera eu
+escolher, não chuta.
 
-Antes de qualquer coisa, testa se o teu ambiente alcança o banco e me diz
-qual dos dois casos vale:
+Cada um imprime uma tabela e devolve o bloco pronto do params.json:
+  - execucoes.py  -> grafico_execucoes (uma barra por mês, com o total do mês)
+  - glpi_sla.py   -> grafico_sla (os três cartões saem daí, não me passa)
 
-  CASO A — você alcança o banco
-    Segue a conexão (usuário somente leitura):
-      host:    <<host>>
-      porta:   <<porta>>
-      base:    <<base>>
-      usuário: <<usuário>>
-      senha:   <<senha>>
-    Roda a query você mesmo.
-    Não grave a senha em arquivo do repositório e não faça commit dela.
-    Se precisar, use variável de ambiente.
+Me mostra as duas tabelas antes de gerar, e junto:
+  - qual robô e qual(is) tabela(s) o execucoes.py resolveu;
+  - a quebra por status das execuções;
+  - se a planilha pedir quebra (por portal, cliente ou etapa), a tabela da
+    quebra também, com os totais batendo com os dos status.
 
-  CASO B — você NÃO alcança o banco, ou não recebeu a conexão acima
-    Me avisa e para por aí — não tenta contornar. Eu rodo a query no DBeaver
-    e te mando o resultado colado ou em CSV, e você segue do mesmo ponto.
-
-A query devolve uma linha por mês × status. O gráfico é o TOTAL DO MÊS —
-soma os status de cada mês. O status serve só para a assertividade:
-
-    total do mês  = soma de todas as linhas daquele mês
-    assertividade = Sucesso ÷ total, no trimestre inteiro
-
-Em qualquer um dos dois casos, deriva do cabeçalho sem eu precisar repetir:
-  - título do gráfico, no formato "Execuções - Jul/26, Ago/26, Set/26"
-  - a assertividade, pela fórmula acima
-Me mostra a tabela consolidada e a assertividade antes de gerar.
-
-Deriva do cabeçalho, sem eu precisar repetir:
-  - título do gráfico, no formato "Execuções - Jul/26, Ago/26, Set/26"
-  - assertividade do trimestre = Sucesso ÷ total
-Me mostra a tabela consolidada e a assertividade antes de gerar.
-
-════════════════════════════════════════════════════════════════════
-SLA  →  slide 5
-════════════════════════════════════════════════════════════════════
-Não precisa de planilha: puxa direto do GLPI, com o cliente e o trimestre
-do cabeçalho.
-
-    set GLPI_APP=<<app_token>>
-    set GLPI_USER=<<user_token>>
-    python glpi_sla.py "<cliente>" <1º mês AAAA-MM> <3º mês AAAA-MM>
-
-(Em Linux/macOS troca `set` por `export`.)
-
-O script já aplica as regras oficiais do indicador: conta pelo mês da data
-de abertura, exclui a categoria Monitoramento, os tickets "[Projeto] -" e a
-entidade interna, e trata chamado sem prazo de SLA como dentro do prazo.
-Ele devolve o bloco `grafico_sla` pronto para o params.json.
-
-Me mostra a tabela que ele imprimiu antes de gerar. Os três cartões do
-slide 5 são calculados a partir desses números — não precisa me passar.
+A assertividade do trimestre eu te confirmo depois de ver os status — não
+preenche por conta própria se nessa base não existir status de erro.
 
 ════════════════════════════════════════════════════════════════════
 TEXTOS
@@ -130,22 +80,35 @@ Pontos de atenção / melhorias  →  slide 7
 (Use **assim** para destacar: amarelo no slide 3, negrito nos slides 6 e 7.)
 
 ════════════════════════════════════════════════════════════════════
-CONFERÊNCIA antes de me entregar
+GERAR E CONFERIR
 ════════════════════════════════════════════════════════════════════
-  - Os meses do gráfico de execuções, do título e do SLA são os três do
-    cabeçalho?
-  - Os chamados considerados são só os do trimestre e só deste robô?
-  - Quais números saíram nos cartões do slide 5 (total, dentro, fora e %)?
-  - Roda com --conferir e olha as imagens: algum texto estourou a caixa?
+    python gerar.py params.json ATE-<cliente>-<competência>.pptx --conferir
+
+  - Os meses dos dois gráficos são os três do cabeçalho?
+  - Quais números saíram nos cartões do slide 5?
+  - Olha as imagens do --conferir: algum texto estourou a caixa?
+
+Me devolve o .pptx.
 ```
 
 ---
+
+## Clientes com mais de um robô
+
+Você só precisa falar o nome do cliente. Para metade deles isso já resolve
+sozinho. Para a outra metade o `execucoes.py` **para e lista as opções, com o
+volume de cada uma no período**, em vez de escolher por conta própria — um ATE
+é de um robô, não de um cliente, e é o robô que o texto do slide 3 descreve:
+
+Quem tem mais de um robô está no `robos.csv` local — o script mostra a lista
+na hora, então não precisa decorar nada nem consultar tabela aqui.
 
 ## Sobre os anexos
 
 O logo é **obrigatório**. Sem ele o gerador para com erro, em vez de produzir
 uma capa com o logo do cliente errado (o que veio no template). Clientes já
-atendidos ficam em `logos/` e não precisam ser reenviados.
+atendidos ficam em `logos/`, que é uma pasta local, e não precisam ser
+reenviados a cada mês.
 
 ## Sobre o `--conferir`
 
@@ -153,16 +116,11 @@ Não exige nada especial: usa PowerPoint se houver (Windows) ou LibreOffice se
 houver (qualquer sistema). Se não houver nenhum dos dois, o gerador avisa e
 segue — o `.pptx` sai igual, só sem a conferência visual automática.
 
-## Sobre o gráfico de execuções
+## Sobre a quebra do gráfico de execuções
 
-A query acima agrupa por `status_execucao`, ou seja, as categorias do gráfico
-serão os status (Sucesso, Erro…). Se o gráfico deste cliente for **por portal**
-— como era no ATE de Jun/26, com Portal D, Portal A, Portal B e Portal C —, a query
-precisa da coluna de portal:
-
-```sql
-GROUP BY MONTH(time_exec), <<coluna de portal>>, status_execucao
-```
-
-Rode `DESCRIBE <<tabela do robô>>;` e mande o resultado para ajustarmos a query
-uma vez só.
+Alguns robôs pedem o gráfico separado por uma coluna da tabela, não só o total
+do mês. Isso está na coluna `quebra_por` do `robos.csv` local, e sai pronto: o
+`execucoes.py` roda uma segunda consulta agrupada por essa coluna e devolve o
+bloco com `categorias` e `series` em vez de `meses` e `execucoes`. O gráfico
+vira uma série por mês e uma categoria por valor — que é a forma original do
+gráfico no template. Os demais robôs seguem com a barra única por mês.
