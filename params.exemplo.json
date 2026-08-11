@@ -1,7 +1,7 @@
 {
   "cliente": "Cliente Exemplo",
   "competencia": "Jun/26",
-  "logo_cliente": "exemplo.png",
+  "logo_cliente": "sem-logo.png",
   "resumo_escopo": "Automação RPA para a rotina de exemplo",
   "escopo_objetivo": "Automatizar a rotina descrita aqui, usando **termo destacado** para o que precisar de realce amarelo neste slide.",
   "grafico_execucoes": {
