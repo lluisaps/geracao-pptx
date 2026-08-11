@@ -41,6 +41,12 @@ O gerador procura em duas ordens: ao lado do `params.json` (o arquivo anexado
 no pedido) e depois em `logos/`. Clientes recorrentes ficam em `logos/` e não
 precisam ser reenviados a cada mês.
 
+Quando o logo do cliente não existir mesmo, use `sem-logo.png` — um PNG
+transparente de 342×101 versionado na raiz. A caixa da capa fica **vazia**, que
+é diferente de deixar o campo em branco: sem `logo_cliente` o gerador para, e
+qualquer bypass deixaria na capa o logo que veio no template (o da Cliente Exemplo),
+ou seja, o de outro cliente.
+
 Para um ATE novo, copie o `params.exemplo.json` para `params.json`, ajuste os
 valores e rode. O [PROMPT.md](PROMPT.md) tem o texto pronto para pedir isso a
 uma IA.
