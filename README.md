@@ -42,13 +42,35 @@ Isso existe porque o `template.pptx` traz o logo de um cliente antigo embutido.
 Sem o placeholder, todo ATE sairia com o logo de outra empresa na capa. Como o
 gerador não lê logo de lugar nenhum, não há o que pedir, procurar ou anexar.
 
-Para um ATE novo, copie o `params.exemplo.json` para `params.json`, ajuste os
-valores e rode. O [PROMPT.md](PROMPT.md) tem o texto pronto para pedir isso a
-uma IA.
+## O caminho curto: `montar.py`
+
+```bash
+python montar.py "<cliente>" 2026-04 2026-06
+```
+
+Ele resolve sozinho a tabela do robô (na planilha), os textos dos slides 2 e 3
+(no dossiê do Obsidian), as execuções (no banco) e os chamados (no GLPI, sempre
+com `--tudo`), e escreve o `params.json`. O que depende de julgamento fica
+marcado com `REVISAR:` dentro do arquivo — condensar o escopo do slide 3,
+confirmar a assertividade e escrever os slides 6 e 7.
+
+Cliente com mais de um robô faz o script listar as opções e parar: um ATE é de
+um robô só. Use `--robo <código>` ou, quando o mesmo código aparecer em mais de
+uma linha, `--robo <número da linha>`. `--sem-banco` monta só a parte de
+planilha e dossiê, para conferir os textos antes de gastar consulta.
+
+**Nada de caminho fixo.** O projeto é onde o `montar.py` está; a planilha é a
+`.xlsx` que estiver junto dele; o vault sai do registro do próprio Obsidian, ou
+da pasta que tiver um `.obsidian` dentro. As colunas da planilha são achadas
+pelo cabeçalho, não pela posição, e a carteira pode ter qualquer tamanho — cada
+gerente tem a sua.
+
+Para montar à mão, copie o `params.exemplo.json` para `params.json` e ajuste os
+valores. O [PROMPT.md](PROMPT.md) tem o texto pronto para pedir um ATE a uma IA.
 
 ## Nada de dado de cliente no repositório
 
-`Tabelas Artemis.xlsx`, `robos.csv` e `params.json` são **locais** e estão no
+`Tabelas Artemis.xlsx` e `params.json` são **locais** e estão no
 `.gitignore`, junto com o `.env`. Eles carregam nome de cliente, tabela do
 banco e volume de execução — nada disso entra em commit. Os dossiês, que trazem
 os textos dos slides 2 e 3, ficam no vault do Obsidian e também não são
@@ -80,59 +102,59 @@ slides 6 e 7.
 
 ## De onde vem a tabela do robô
 
-Do `robos.csv`, um arquivo **local**, na raiz do projeto ao lado do `.env`. Ele
-não é versionado — veja a seção acima. Quatro colunas:
+Da **planilha** — a `.xlsx` que estiver ao lado do `montar.py`. Ela é local,
+não versionada, e é a única fonte da tabela e da quebra no fluxo do `montar.py`.
 
-| Coluna | Para que serve |
-|---|---|
-| `cliente` | repetido em toda linha; o casamento ignora acento e caixa |
-| `robo` | chave de agrupamento — **linhas com o mesmo rótulo somam** |
-| `tabela` | a `yank_...` de execuções |
-| `quebra_por` | coluna de quebra, quando o gráfico não é só o total do mês |
+As colunas são achadas pelo **cabeçalho**, nunca pela posição: nome da coluna,
+aba e quantidade de linhas mudam sem aviso, e cada gerente tem a sua carteira.
+Cada papel aceita sinônimos:
 
-O normal é passar só o cliente. Quando ele tem mais de um robô, o script lista
-as opções com o volume de cada uma no período e para:
+| Papel | Cabeçalhos aceitos | Obrigatória |
+|---|---|---|
+| cliente | `cliente`, `empresa`, `conta` | sim |
+| tabela | `tabela`, `banco`, `base`, `schema`, `db` | sim |
+| obs | `obs`, `observacao`, `nota`, `comentario` | não |
 
-```
-o cliente '<cliente>' tem 2 robôs no robos.csv:
+Planilha sem coluna de OBS apenas significa nenhum robô com quebra nem com
+"pode somar". Sem as duas obrigatórias, o script para e diz o que procurou.
 
-robô                             no período   tabela(s)
-<rótulo A>                       2537         <tabela>, <tabela>
-<rótulo B>                       274          <tabela>, <tabela>, <tabela>
-```
+A **OBS** é quem carrega a inteligência. Uma OBS preenchida abre um robô novo, e
+as linhas de OBS vazia logo abaixo pertencem a ele — mas só quando a OBS
+autoriza, escrevendo "pode somar", "juntar", "agrupar" ou equivalente. Linha em
+branco sem essa autorização faz o script **avisar em vez de somar calado**,
+porque um ATE é de um robô só.
 
-Aí você repete com o robô no quarto argumento:
+O código do robô sai da própria OBS, por padrão: duas a quatro letras seguidas
+de dois ou três dígitos. Não fixa o `R` inicial nem o tamanho, porque cada
+gerente numera a carteira do seu jeito.
 
-```bash
-python execucoes.py "<cliente>" 2026-04 2026-06 "<rótulo B>"
-```
+O normal é passar só o cliente. Quando ele tem mais de um robô, o `montar.py`
+lista as opções e para — ele não escolhe sozinho de propósito: o escopo do
+slide 3 descreve um robô específico, e somar dois daria um gráfico que não
+corresponde a texto nenhum. Aí você repete com `--robo <código>`, ou
+`--robo <número da linha>` quando o mesmo código aparecer em mais de uma linha.
 
-Ele não escolhe sozinho de propósito: um ATE é de **um robô**, não de um
-cliente — o escopo do slide 3 descreve um robô específico, e somar dois daria
-um gráfico que não corresponde a texto nenhum.
+Não existe descoberta pelo banco. A antiga (`vw_robo_cliente` →
+`sis_robo_execucao`) foi removida porque não dava para confiar nela — **nove das
+tabelas em uso não têm vínculo em `sis_robo_execucao`** e eram invisíveis por
+ali, o que tornava alguns robôs impossíveis de gerar. Cliente que não estiver na
+planilha faz o script parar e pedir a linha, em vez de adivinhar.
 
-O CSV é a **única** fonte da tabela. Não existe descoberta pelo banco: cliente
-que não estiver no arquivo faz o script parar e pedir a linha, em vez de
-adivinhar. A descoberta antiga (`vw_robo_cliente` → `sis_robo_execucao`) foi
-removida porque não dava para confiar nela — **nove das tabelas em uso não têm
-vínculo em `sis_robo_execucao`** e eram invisíveis por ali, o que tornava
-alguns robôs impossíveis de gerar.
-
-Os rótulos da coluna `robo` são os da planilha de origem, não os nomes
-cadastrados no banco. Onde os dois divergem, vale a planilha: o rótulo existe
-para ser digitado por quem pede o ATE.
-
-O `checar_robos.py` confere o CSV contra o banco: existência das tabelas,
-presença de `time_exec`/`status_execucao`, o robô que o banco associa a cada
-uma e os valores distintos das colunas de quebra. O `fumaca.py` passa todos os
-robôs do CSV pela consulta de verdade e confere se os totais fecham.
+Os nomes divergem entre planilha e dossiê o tempo todo (`&` contra `e`, acento
+que some, letras trocadas no código do robô). O casamento ignora acento, caixa e
+pontuação, e compara o código pelo número mais o conjunto de letras — onde os
+dois divergirem, vale a planilha.
 
 ## O gráfico quebrado
 
 Alguns robôs não querem o total do mês, e sim a divisão por uma coluna da
-tabela. Quem diz isso é a coluna `quebra_por` do `robos.csv`, com o nome da
-coluna em maiúsculas. As quebras reconhecidas estão em `SQL_QUEBRA`, no
-`execucoes.py`.
+tabela. Quem diz isso é a **OBS da planilha**: "separar pela coluna Portal",
+"quebrar por etapa", "dividir por marketplace" e afins são reconhecidos.
+
+O apelido extraído da OBS é só uma pista, não a resposta — já houve OBS citando
+uma coluna cujos valores estavam guardados em outra, com outro nome. Quem acha a
+coluna de verdade é o `execucoes.py`, e as quebras reconhecidas estão em
+`SQL_QUEBRA`, lá dentro.
 
 Nesses casos o `execucoes.py` roda uma **segunda** consulta, agrupada por essa
 coluna, e devolve o bloco com `categorias` e `series` no lugar de `meses` e
@@ -190,6 +212,7 @@ fazem a direita começar em 3. Não escreva o número no texto.
 
 ```
 versionado:
+  montar.py            monta o params.json a partir da planilha e do dossiê
   gerar.py             o gerador
   template.pptx        o modelo institucional (não editar)
   sem-logo.png         placeholder transparente da capa
@@ -197,14 +220,13 @@ versionado:
   execucoes.py         extrai as execuções do trimestre
   glpi_sla.py          extrai o SLA do GLPI
   probe.py             valores distintos de uma coluna, para a quebra
-  checar_robos.py      confere o robos.csv contra o banco
-  fumaca.py            roda todos os robôs do CSV e confere os totais
+  checar_robos.py      confere as tabelas contra o banco
+  fumaca.py            roda todos os robôs pela consulta e confere os totais
   PROMPT.md            prompt pronto para pedir um ATE novo
 
 local, nunca versionado:
   .env                    credenciais do banco e do GLPI
   Tabelas Artemis.xlsx    cliente -> robô -> tabela(s) -> quebra
-  robos.csv               antecessor da planilha, já divergente
   params.json             o ATE que você está montando agora
 ```
 
