@@ -2,7 +2,6 @@
 .env
 
 # dados de cliente — tudo isto é local, não entra no repositório
-robos.csv
 params.json
 params-*.json
 logos/
@@ -10,5 +9,5 @@ Tabelas Artemis.xlsx
 
 # saída gerada
 ATE*.pptx
-conferencia/
+conferencia*/
 __pycache__/
