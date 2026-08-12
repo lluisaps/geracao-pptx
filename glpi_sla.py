@@ -6,6 +6,7 @@ params.json.
     set GLPI_APP=...
     set GLPI_USER=...
     python glpi_sla.py "<cliente>" 2026-04 2026-06
+    python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo
 
 Regras conforme a documentação canônica do indicador (workflow n8n
 "GLPI - Dashboard Indicators", nó MySQL - SLA + Code - Montar Resposta):
@@ -22,6 +23,21 @@ Exclusões globais do dashboard, aplicadas aqui também:
   - categoria contendo "Monitoramento"
   - título começando com "[Projeto] -"
   - entidade interna "Yank Solutions!"
+
+O padrão acima reproduz o indicador canônico — é o mesmo número do Dashboard
+Sustain para o período.
+
+O --tudo desliga os três filtros. Existe para o ATE, que mostra o VOLUME de
+chamados do cliente no trimestre, não o indicador: um cliente cujos chamados
+sejam quase todos de Monitoramento sairia com meses zerados no gráfico enquanto
+o GLPI tem chamado no período.
+
+Isso é uma divergência DELIBERADA, não um conserto. O SLA impresso com --tudo
+não é comparável ao do dashboard no mesmo período, e o total de chamados
+tampouco. Não unifique os dois sem decidir antes qual dos números o ATE mostra.
+
+De qualquer forma o script sempre diz quantos chamados do período cada regra
+descarta, com ou sem --tudo, para o número nunca sumir calado.
 """
 import json
 import os
@@ -87,25 +103,33 @@ def _dt(v):
     return datetime.strptime(str(v)[:19], "%Y-%m-%d %H:%M:%S")
 
 
-def excluir(t):
-    """Exclusões globais do dashboard."""
+def motivo_exclusao(t):
+    """Qual das exclusões globais do dashboard descarta este ticket, ou None."""
     cat = (t.get(str(F_CATEG)) or "")
     nome = (t.get(str(F_NOME)) or "")
     ent = (t.get(str(F_ENTIDADE)) or "")
     if "Monitoramento" in cat:
-        return True
+        return "Monitoramento"
     if nome.startswith("[Projeto] -"):
-        return True
+        return "[Projeto] -"
     # nome do cliente = primeiro nível depois de "Clientes >"
     if "Clientes >" in ent:
         cliente = ent.split("Clientes >", 1)[1].split(">")[0].strip()
         if cliente == "Yank Solutions!":
-            return True
-    return False
+            return "entidade interna"
+    return None
 
 
-def apurar(chamados, ini_mes, fim_mes):
-    """ini_mes/fim_mes no formato AAAA-MM, inclusivos."""
+def excluir(t):
+    """Exclusões globais do dashboard."""
+    return motivo_exclusao(t) is not None
+
+
+def apurar(chamados, ini_mes, fim_mes, tudo=False):
+    """ini_mes/fim_mes no formato AAAA-MM, inclusivos.
+
+    tudo=True desliga as exclusões do dashboard — é o modo do ATE.
+    """
     a0, m0 = [int(x) for x in ini_mes.split("-")]
     a1, m1 = [int(x) for x in fim_mes.split("-")]
     faixa = []
@@ -120,7 +144,7 @@ def apurar(chamados, ini_mes, fim_mes):
                                 "em_risco": 0, "sem_sla": 0}) for am in faixa)
     agora = datetime.now()
     for t in chamados:
-        if excluir(t):
+        if not tudo and excluir(t):
             continue
         ab = _dt(t.get(str(F_ABERTURA)))
         if not ab or (ab.year, ab.month) not in buckets:
@@ -170,6 +194,41 @@ def relatorio(buckets):
     return tot, geral
 
 
+def contar_exclusoes(chamados, buckets):
+    """Quantos chamados DO PERÍODO cada exclusão do dashboard descarta.
+
+    Conta sempre, inclusive com --tudo: é o que impede um mês de sair zerado
+    sem ninguém perceber que o filtro comeu os chamados.
+    """
+    contagem = OrderedDict()
+    for t in chamados:
+        motivo = motivo_exclusao(t)
+        if not motivo:
+            continue
+        ab = _dt(t.get(str(F_ABERTURA)))
+        if not ab or (ab.year, ab.month) not in buckets:
+            continue
+        contagem[motivo] = contagem.get(motivo, 0) + 1
+    return contagem
+
+
+def relatorio_exclusoes(contagem, tudo):
+    n = sum(contagem.values())
+    detalhe = ", ".join("%d %s" % (v, k) for k, v in contagem.items())
+    if tudo:
+        print("--tudo: exclusões do dashboard DESLIGADAS — todos os chamados "
+              "do período entram no cálculo.")
+        if n:
+            print("        (a regra canônica descartaria %d: %s)" % (n, detalhe))
+        return
+    if n:
+        print("exclusões do dashboard: %d chamado(s) do período fora do "
+              "cálculo (%s)." % (n, detalhe))
+        print("                        para o ATE, rode de novo com --tudo.")
+    else:
+        print("exclusões do dashboard: nenhum chamado do período foi descartado.")
+
+
 def bloco_params(buckets):
     meses, chamados, dentro = [], [], []
     for (a, m), b in buckets.items():
@@ -183,14 +242,19 @@ def bloco_params(buckets):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        sys.exit('uso: python glpi_sla.py "<cliente>" <AAAA-MM inicial> <AAAA-MM final>')
-    cliente, ini, fim = sys.argv[1], sys.argv[2], sys.argv[3]
+    tudo = "--tudo" in sys.argv[1:]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(args) < 3:
+        sys.exit('uso: python glpi_sla.py "<cliente>" <AAAA-MM inicial> '
+                 '<AAAA-MM final> [--tudo]')
+    cliente, ini, fim = args[0], args[1], args[2]
     sess = abrir_sessao()
     try:
         dados = buscar_chamados(sess, cliente)
         print("chamados lidos para %r: %d" % (cliente, len(dados)))
-        buckets = apurar(dados, ini, fim)
+        buckets = apurar(dados, ini, fim, tudo)
+        print()
+        relatorio_exclusoes(contar_exclusoes(dados, buckets), tudo)
         print()
         relatorio(buckets)
         print()
