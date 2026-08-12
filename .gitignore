@@ -6,6 +6,7 @@ robos.csv
 params.json
 params-*.json
 logos/
+Tabelas Artemis.xlsx
 
 # saída gerada
 ATE*.pptx
