@@ -25,6 +25,7 @@ except ImportError:
              "    python -m pip install python-pptx\n")
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.pptx")
+SEM_LOGO = "sem-logo.png"   # PNG transparente: a capa do ATE vai sempre sem logo
 XMLSPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
 
@@ -170,11 +171,15 @@ def _cache_de(ser, campo):
 
 
 def escrever_grafico(chart, categorias, series):
-    """series = lista de (nome, valores) na ordem em que aparecem no XML.
+    """series = lista de (nome, valores[, formato]) na ordem do XML.
 
     Se o gráfico do template tiver mais séries do que as informadas, as
     excedentes são removidas — é o que permite o gráfico de execuções passar
     de 4 portais x 3 meses para 3 meses x 1 série.
+
+    O terceiro elemento é opcional e serve para a série que não é contagem:
+    a linha de SLA guarda uma fração, e com o padrão "#,##0" o rótulo saía
+    arredondado para inteiro (0,5 virava "1" e 0,43 virava "0").
     """
     sers = chart._chartSpace.findall(".//" + qc("ser"))
     if len(sers) < len(series):
@@ -183,7 +188,9 @@ def escrever_grafico(chart, categorias, series):
     for extra in sers[len(series):]:
         extra.getparent().remove(extra)
     sers = sers[:len(series)]
-    for ser, (nome, valores) in zip(sers, series):
+    for ser, item in zip(sers, series):
+        nome, valores = item[0], item[1]
+        formato = item[2] if len(item) > 2 else "#,##0"
         c = _cache_de(ser, "tx")
         if c is not None:
             _regravar_cache(c, [nome])
@@ -200,7 +207,7 @@ def escrever_grafico(chart, categorias, series):
             if fmt is None:
                 fmt = c.makeelement(qc("formatCode"), {})
                 c.insert(0, fmt)
-            fmt.text = "#,##0"
+            fmt.text = formato
 
 
 # posição da nota de assertividade no slide 4, em pontos (mesma unidade do
@@ -245,7 +252,6 @@ def trocar_imagem(slide, nome, caminho):
 
 # ------------------------------------------------------------------ principal
 def gerar(params, saida):
-    base = os.path.dirname(os.path.abspath(params))
     cfg = json.load(open(params, encoding="utf-8"))
     prs = Presentation(TEMPLATE)
     s = list(prs.slides)
@@ -256,23 +262,16 @@ def gerar(params, saida):
     rn = runs_de(p)[0]
     escrever(p, cfg["competencia"], rn, rn)
 
-    # O logo do cliente é obrigatório: sem ele a capa sairia com o logo que
-    # veio no template, ou seja, o de OUTRO cliente. Melhor falhar aqui.
-    logo = (cfg.get("logo_cliente") or "").strip()
-    if not logo:
-        sys.exit("erro: 'logo_cliente' está vazio no params.json.\n"
-                 "      Salve o PNG do cliente (ou em logos/) e informe o nome.")
-    candidatos = [logo] if os.path.isabs(logo) else [
-        os.path.join(base, logo),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos", logo),
-    ]
-    cam = next((c for c in candidatos if os.path.exists(c)), None)
-    if cam is None:
-        sys.exit("erro: logo %r não encontrado. Procurei em:\n       %s\n"
-                 "      Salve o PNG do cliente num desses caminhos."
-                 % (logo, "\n       ".join(candidatos)))
+    # A capa vai SEM logo, sempre. O sem-logo.png é um PNG transparente que
+    # cobre o logo que veio no template (o de OUTRO cliente). Não é opção nem
+    # padrão de fallback: o gerador não lê logo de lugar nenhum, então ninguém
+    # precisa pedir, procurar ou anexar logo de cliente.
+    cam = os.path.join(os.path.dirname(os.path.abspath(__file__)), SEM_LOGO)
+    if not os.path.exists(cam):
+        sys.exit("erro: %s não está na raiz do projeto.\n"
+                 "      Ele é o placeholder transparente da capa." % SEM_LOGO)
     trocar_imagem(s[0], "Imagem 7", cam)
-    print("  logo: %s" % cam)
+    print("  logo: capa sem logo (%s)" % SEM_LOGO)
 
     # -------------------------------------------------------- slide 2: agenda
     txt0 = achar(s[1], "Text 0")
@@ -334,7 +333,8 @@ def gerar(params, saida):
     escrever_grafico(grafico, sla["meses"], [
         ("Total Chamados", sla["chamados"]),
         ("Dentro do SLA", [round(d / c, 10) if c else 0
-                           for d, c in zip(sla["dentro_do_sla"], sla["chamados"])]),
+                           for d, c in zip(sla["dentro_do_sla"], sla["chamados"])],
+         "0%"),
     ])
     pt = grafico.chart_title.text_frame._txBody.findall(qn("a:p"))[0]
     rt = runs_de(pt)[0]

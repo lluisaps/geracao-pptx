@@ -111,8 +111,8 @@ def main(caminho):
                     continue
                 t, q = l["tabela"], l["quebra_por"]
                 c = cols.get(t) or []
-                # "portal" na planilha nem sempre é uma coluna PORTAL: no
-                # outras tabelas a mesma ideia está em OUTRA_COLUNA.
+                # "portal" na planilha nem sempre é uma coluna PORTAL: em
+                # algumas tabelas a mesma ideia está sob outro nome.
                 palavras = (["portal", "marketplace"] if q == "portal"
                             else ["etapa", "step", "fase"])
                 col = achar_coluna(c, palavras)

@@ -32,20 +32,15 @@ sistema, via `soffice`). Se não achar nenhum dos dois, avisa e segue — o
 `.pptx` sai igual, só sem a conferência automática. Nada disso é necessário
 para gerar.
 
-## O logo do cliente
+## A capa vai sem logo
 
-Obrigatório. Sem ele o gerador **para com erro** em vez de produzir uma capa
-com o logo que veio no template, ou seja, o de outro cliente.
+Não é configuração: o gerador **sempre** cobre a área do logo com o
+`sem-logo.png`, um PNG transparente de 342×101 versionado na raiz. A caixa da
+capa fica vazia em todos os ATEs, e o `params.json` não tem campo de logo.
 
-O gerador procura em duas ordens: ao lado do `params.json` (o arquivo anexado
-no pedido) e depois em `logos/`. Clientes recorrentes ficam em `logos/` e não
-precisam ser reenviados a cada mês.
-
-Quando o logo do cliente não existir mesmo, use `sem-logo.png` — um PNG
-transparente de 342×101 versionado na raiz. A caixa da capa fica **vazia**, que
-é diferente de deixar o campo em branco: sem `logo_cliente` o gerador para, e
-qualquer bypass deixaria na capa o logo que veio no template (o da Cliente Exemplo),
-ou seja, o de outro cliente.
+Isso existe porque o `template.pptx` traz o logo de um cliente antigo embutido.
+Sem o placeholder, todo ATE sairia com o logo de outra empresa na capa. Como o
+gerador não lê logo de lugar nenhum, não há o que pedir, procurar ou anexar.
 
 Para um ATE novo, copie o `params.exemplo.json` para `params.json`, ajuste os
 valores e rode. O [PROMPT.md](PROMPT.md) tem o texto pronto para pedir isso a
@@ -53,18 +48,23 @@ uma IA.
 
 ## Nada de dado de cliente no repositório
 
-`robos.csv`, `params.json` e a pasta `logos/` são **locais** e estão no
+`Tabelas Artemis.xlsx`, `robos.csv` e `params.json` são **locais** e estão no
 `.gitignore`, junto com o `.env`. Eles carregam nome de cliente, tabela do
-banco, volume de execução e logo — nada disso entra em commit. O que fica
-versionado é só o mecanismo: os scripts, o template e este README. O
-`params.exemplo.json` é fictício de propósito.
+banco e volume de execução — nada disso entra em commit. Os dossiês, que trazem
+os textos dos slides 2 e 3, ficam no vault do Obsidian e também não são
+copiados para cá.
+
+O que fica versionado é só o mecanismo: os scripts, o template, o
+`sem-logo.png` e a documentação. O `params.exemplo.json` é fictício de
+propósito, e os exemplos do [PROMPT.md](PROMPT.md) são genéricos — nenhum nome
+de cliente, código de robô ou nome de tabela real aparece em arquivo
+versionado.
 
 ## O que cada campo preenche
 
 | Campo | Slide | O que muda |
 |---|---|---|
 | `competencia` | 1 | data na pílula ao lado do título |
-| `logo_cliente` | 1 | logo do cliente, encaixado na caixa mantendo a proporção |
 | `resumo_escopo` | 2 | descrição da etapa 1 da agenda |
 | `escopo_objetivo` | 3 | texto do escopo; `**termo**` sai com realce amarelo |
 | `grafico_execucoes.titulo` | 4 | título acima do gráfico |
@@ -192,18 +192,20 @@ fazem a direita começar em 3. Não escreva o número no texto.
 versionado:
   gerar.py             o gerador
   template.pptx        o modelo institucional (não editar)
+  sem-logo.png         placeholder transparente da capa
   params.exemplo.json  exemplo fictício, copie para params.json
   execucoes.py         extrai as execuções do trimestre
   glpi_sla.py          extrai o SLA do GLPI
+  probe.py             valores distintos de uma coluna, para a quebra
   checar_robos.py      confere o robos.csv contra o banco
   fumaca.py            roda todos os robôs do CSV e confere os totais
   PROMPT.md            prompt pronto para pedir um ATE novo
 
 local, nunca versionado:
-  .env                 credenciais do banco e do GLPI
-  robos.csv            cliente -> robô -> tabela(s) -> quebra
-  params.json          o ATE que você está montando agora
-  logos/               os logos dos clientes
+  .env                    credenciais do banco e do GLPI
+  Tabelas Artemis.xlsx    cliente -> robô -> tabela(s) -> quebra
+  robos.csv               antecessor da planilha, já divergente
+  params.json             o ATE que você está montando agora
 ```
 
 ## Detalhes de implementação
