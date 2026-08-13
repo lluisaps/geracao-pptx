@@ -40,6 +40,11 @@ AMBIENTE — nada aqui é pergunta
 NÃO te passo caminho de nada: nem do projeto, nem da planilha, nem do
 Obsidian. Mudam de máquina para máquina e os scripts acham sozinhos.
 
+O vault do Obsidian é fonte OBRIGATÓRIA deste ATE, não é atalho nem
+conveniência: os textos dos slides 2 e 3 só existem lá. Abrir o vault e
+ler o dossiê do cliente é passo do processo — se esse passo não
+aconteceu, o ATE não está pronto, por mais completo que ele pareça.
+
 Acha a pasta que tem montar.py e gerar.py e trabalha nela. Usa a árvore
 como está: não troca de branch, não faz git pull, não commita.
 
@@ -95,17 +100,51 @@ Tudo isto de uma vez, que é o que eu confiro:
   - os chamados do GLPI mês a mês e a linha de exclusões — número alto
     ali significa que o ATE e o dashboard vão contar histórias
     diferentes desse cliente, e eu quero saber antes da reunião;
-  - os dois textos do dossiê, com o arquivo e a seção de origem.
+  - os dois textos do dossiê do Obsidian, cada um com o arquivo .md e a
+    seção de onde saiu — se não vier a origem, eu assumo que o texto foi
+    escrito de cabeça e devolvo o ATE.
 
 Mês zerado em qualquer um dos dois gráficos é ALERTA, não resultado:
 confere na fonte antes de me entregar.
 
 
 ════════════════════════════════════════════════════════════════════
+OS TEXTOS DOS SLIDES 2 E 3 SAEM DO OBSIDIAN — SEMPRE
+════════════════════════════════════════════════════════════════════
+
+As duas primeiras linhas de texto do params.json — `resumo_escopo` e
+`escopo_objetivo` — vêm do DOSSIÊ DO CLIENTE no meu vault do Obsidian, e
+de lugar nenhum além dele. Quem acha é o montar.py; ele procura o vault
+sozinho e casa o dossiê pelo campo `cliente:` de dentro do arquivo.
+
+Não vale, para preencher esses dois campos:
+
+  - escrever de cabeça a partir do nome do cliente ou do código do robô;
+  - deduzir o objetivo pelo que a tabela do banco parece fazer;
+  - copiar de um params.json ou de um .pptx de outro ATE;
+  - aproveitar o texto que já está no ATE do trimestre passado sem abrir
+    o dossiê para conferir.
+
+Condensar e reescrever PODE — é justamente o que o slide 3 pede. Entrar
+fato que não está no dossiê, NÃO.
+
+Me diga sempre, para cada um dos dois: qual arquivo .md e qual seção.
+Sem essa origem eu não aprovo o texto, porque é o único erro do ATE que
+não aparece no PNG do --conferir: texto inventado sai bonito.
+
+Não achou o vault, não achou o dossiê, ou achou e ele não tem o objetivo
+do robô que eu pedi? PARA e me pede o texto. Não preenche com texto de
+outro cliente, não escreve de cabeça e não segue com placeholder.
+
+Do dossiê sai só isso — nada de valor de contrato, mensalidade, ROI ou
+contato.
+
+
+════════════════════════════════════════════════════════════════════
 O QUE O SCRIPT DEIXA MARCADO COM "REVISAR"
 ════════════════════════════════════════════════════════════════════
 
-SLIDE 3 — escopo, CURTO
+SLIDE 3 — escopo, CURTO (texto do dossiê, ver a seção acima)
     O script entrega o texto do dossiê já sem a enumeração de etapas.
     Falta condensar: no mínimo 4 e no máximo 5 linhas na caixa, régua de
     ~300 caracteres visíveis (a caixa comporta ~76 por linha; os ** da
@@ -122,7 +161,7 @@ SLIDE 3 — escopo, CURTO
 
     Me mostra o original e o resumido lado a lado.
 
-SLIDE 2 — resumo do robô
+SLIDE 2 — resumo do robô (texto do dossiê, ver a seção acima)
     O script propõe uma linha juntando o nome do projeto com a
     segmentação. Me mostra para eu aprovar ou corrigir.
 
@@ -137,10 +176,10 @@ ASSERTIVIDADE
 SLIDES 6 E 7
     São do trimestre, não do contrato: vão abaixo, na minha mensagem.
 
-Se não achar o dossiê, ou achar e ele não tiver o objetivo do robô que eu
-pedi, ME AVISA e me pede o texto. Não preenche com texto de outro cliente
-e não escreve de cabeça. Do dossiê sai só isso — nada de valor de
-contrato, mensalidade, ROI ou contato.
+ENTIDADE DO GLPI
+    O glpi_sla.py imprime a(s) entidade(s) que usou antes da contagem.
+    Me repassa essa linha: o nome da planilha não é o nome do GLPI, e é
+    ali que dá para ver se ele foi buscar no cliente certo.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -188,8 +227,8 @@ Me devolve o .pptx.
 |---|---|---|
 | 1 | competência | cabeçalho do pedido |
 | 1 | logo | nenhum — placeholder transparente, sempre |
-| 2 | resumo do robô | dossiê, nome do projeto + segmentação |
-| 3 | escopo e objetivo | dossiê, objetivo do projeto (ou do robô) |
+| 2 | resumo do robô | **dossiê no Obsidian** (obrigatório), nome do projeto + segmentação |
+| 3 | escopo e objetivo | **dossiê no Obsidian** (obrigatório), objetivo do projeto (ou do robô) |
 | 4 | execuções do trimestre | banco, via `execucoes.py` |
 | 5 | chamados e SLA | GLPI, via `glpi_sla.py --tudo` |
 | 6 | dificuldades / lições | você, na mensagem |
@@ -207,7 +246,7 @@ Nenhuma delas está no repositório, e é de propósito.
 |---|---|---|
 | `.env` | raiz do projeto | credenciais do banco e do GLPI |
 | planilha `.xlsx` | raiz do projeto | tabela do robô no banco e a quebra do gráfico |
-| dossiês | vault do Obsidian | textos dos slides 2 e 3 |
+| dossiês | vault do Obsidian | textos dos slides 2 e 3 — **fonte obrigatória, sem alternativa** |
 | GLPI | rede | chamados e SLA do trimestre |
 
 O `.env` é por máquina — copie o `.env.exemplo` e preencha. Os acessos são
