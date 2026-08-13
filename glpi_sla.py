@@ -7,6 +7,13 @@ params.json.
     set GLPI_USER=...
     python glpi_sla.py "<cliente>" 2026-04 2026-06
     python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo
+    python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo --entidade 123
+
+Antes de buscar, o nome do cliente é resolvido para o(s) nó(s) de entidade do
+GLPI, e os chamados saem desses nós e de todas as sub-entidades deles, sempre
+filtrados por ID. Os nós usados vão impressos no começo da saída — confira que
+são os do cliente. Nome que não casa com entidade nenhuma é ERRO, não zero.
+O --entidade <id>[,<id>] força a mão. Ver o bloco "entidades" para o porquê.
 
 Regras conforme a documentação canônica do indicador (workflow n8n
 "GLPI - Dashboard Indicators", nó MySQL - SLA + Code - Montar Resposta):
@@ -39,9 +46,13 @@ tampouco. Não unifique os dois sem decidir antes qual dos números o ATE mostra
 De qualquer forma o script sempre diz quantos chamados do período cada regra
 descarta, com ou sem --tudo, para o número nunca sumir calado.
 """
+import html
 import json
 import os
+import re
 import sys
+import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
@@ -76,24 +87,191 @@ def abrir_sessao():
     return d["session_token"]
 
 
-def buscar_chamados(sess, cliente):
-    campos = [F_NOME, F_ID, F_CATEG, F_STATUS, F_ABERTURA, F_SOLUCAO, F_PRAZO, F_ENTIDADE]
-    q = [("criteria[0][field]", str(F_ENTIDADE)),
-         ("criteria[0][searchtype]", "contains"),
-         ("criteria[0][value]", cliente)]
-    for i, c in enumerate(campos):
-        q.append(("forcedisplay[%d]" % i, str(c)))
+# ---------------------------------------------------------------- entidades
+#
+# O cliente é uma ENTIDADE do GLPI e os chamados dele ficam nas SUB-entidades
+# (uma por robô, mais a de produção). Achar essa entidade é a parte que mais dá
+# errado, porque o nome da planilha quase nunca é o nome do GLPI: um lado tem a
+# razão social e o outro o nome curto, um tem apóstrofo e o outro não, um tem
+# "&" e o outro escreve "e" — e a API ainda devolve o "&" escapado como HTML.
+#
+# A versão antiga jogava o nome da planilha num "contains" sobre o campo de
+# entidade. Quando o texto não casava, a busca voltava VAZIA e o script seguia
+# em frente: o ATE saía com o gráfico de chamados zerado e sem aviso nenhum.
+# Zero chamado é um resultado possível e por isso ninguém desconfia.
+#
+# Agora o nome vira um id de entidade aqui, comparando com a lista de entidades
+# do GLPI, e o filtro dos chamados é por id. Nome que não casa é ERRO com a
+# lista de candidatos, nunca zero calado.
+
+PAGINA = 200
+
+# Palavras que aparecem de um lado e não do outro; não valem como diferença.
+RUIDO = frozenset(["e", "de", "da", "do", "das", "dos", "ltda", "sa", "me",
+                   "eireli"])
+
+
+def normalizar(nome):
+    """Texto comparável: sem acento, sem pontuação, minúsculo.
+
+    Desescapa o HTML antes de tudo, porque a API devolve "&#38;" no lugar de
+    "&", e troca "&" por " e ", que é como o mesmo nome costuma vir escrito do
+    outro lado. O apóstrofo é apagado em vez de virar espaço, para a forma com
+    e a forma sem apóstrofo darem no mesmo texto.
+    """
+    t = html.unescape(nome or "")
+    t = unicodedata.normalize("NFKD", t)
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    t = t.replace("&", " e ")
+    for apostrofo in "'’`´":
+        t = t.replace(apostrofo, "")
+    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
+
+
+def palavras(nome):
+    return [p for p in normalizar(nome).split() if p not in RUIDO]
+
+
+def listar_entidades(sess):
+    """Todas as entidades visíveis para a sessão."""
     headers = {"App-Token": APP, "Session-Token": sess}
     saida, ini = [], 0
     while True:
-        url = BASE + "/search/Ticket?" + urllib.parse.urlencode(q) + \
-              "&range=%d-%d" % (ini, ini + 199)
-        d = _req(url, headers)
-        lote = d.get("data") or []
-        saida.extend(lote)
-        if len(saida) >= int(d.get("totalcount", 0)) or not lote:
+        lote = _req(BASE + "/Entity?range=%d-%d" % (ini, ini + PAGINA - 1),
+                    headers)
+        if not isinstance(lote, list) or not lote:
             break
-        ini += 200
+        saida.extend(lote)
+        ini += len(lote)
+        if len(lote) < PAGINA:
+            break
+    return saida
+
+
+def _descrever(e):
+    return "%s (id %s)" % (html.unescape(e.get("completename")
+                                         or e.get("name") or "?"), e.get("id"))
+
+
+def resolver_entidades(sess, cliente, entidade_id=None):
+    """Os nós de entidade que são o cliente. LISTA, não um só.
+
+    Casa pelo NOME do nó, não pelo caminho: assim o nó do robô pendurado
+    embaixo do cliente não concorre com o cliente, e o cliente não casa por
+    acidente com o nome do squad que aparece no caminho dele.
+
+    Vale todo nó cujo nome COMEÇA com o que foi pedido, e é de propósito que
+    seja mais de um: nesta árvore o ambiente de produção de alguns clientes é
+    um nó IRMÃO do nó do cliente ("<cliente>" e "<cliente> - Ambiente
+    produção"), não um filho. Pegar só o primeiro deixaria metade dos chamados
+    do cliente de fora. Nó que já está dentro da subárvore de outro nó casado
+    é descartado, senão o chamado seria contado duas vezes.
+
+    Se nada começar com o nome pedido, cai para "contém todas as palavras" —
+    rede de segurança para nome escrito em outra ordem. Se ainda assim não
+    achar nada, é ERRO com os nomes parecidos, nunca zero calado.
+
+    Quem casa com mais de um nó vê a lista impressa com a contagem de cada um;
+    se a lista misturar dois clientes diferentes, o desempate é --entidade
+    <id> (aceita ids separados por vírgula).
+    """
+    entidades = listar_entidades(sess)
+    if not entidades:
+        sys.exit("o GLPI não devolveu nenhuma entidade para esta sessão.")
+
+    if entidade_id is not None:
+        pedidos = [i.strip() for i in str(entidade_id).split(",") if i.strip()]
+        achados = [e for e in entidades if str(e.get("id")) in pedidos]
+        faltando = set(pedidos) - {str(e.get("id")) for e in achados}
+        if faltando:
+            sys.exit("não há entidade com id %s no GLPI."
+                     % ", ".join(sorted(faltando)))
+        return achados
+
+    alvo = palavras(cliente)
+    if not alvo:
+        sys.exit("nome de cliente vazio — não dá para achar a entidade.")
+
+    achados = [e for e in entidades if palavras(e.get("name"))[:len(alvo)] == alvo]
+    if not achados:
+        achados = [e for e in entidades
+                   if set(alvo) <= set(palavras(e.get("name")))]
+    if not achados:
+        quase = sorted({html.unescape(e.get("name") or "") for e in entidades
+                        if set(palavras(e.get("name"))) & set(alvo)})
+        sys.exit("nenhuma entidade do GLPI casa com %r.\n"
+                 "      O nome da planilha não é o nome do GLPI (razão social,\n"
+                 "      apóstrofo, \"&\"): confira e rode com --entidade <id>.\n"
+                 "      Nomes parecidos: %s"
+                 % (cliente, ", ".join(quase[:12]) or "nenhum"))
+
+    # nó dentro da subárvore de outro nó casado seria contado duas vezes
+    caminhos = [(e, html.unescape(e.get("completename") or "")) for e in achados]
+    return [e for e, cn in caminhos
+            if not any(cn.startswith(outro + " > ")
+                       for o, outro in caminhos if o is not e)]
+
+
+def buscar_chamados(sess, cliente, entidade_id=None):
+    """Chamados dos nós do cliente e de TODAS as sub-entidades deles.
+
+    O filtro é por id ("equals" no nó OU "under" na subárvore dele), o que
+    dispensa acertar o texto do nome e não depende de como o caminho está
+    escrito. Os dois critérios são necessários por nó: "under" pega só os
+    descendentes, e chamado aberto direto no nó do cliente ficaria de fora.
+    """
+    nos = resolver_entidades(sess, cliente, entidade_id)
+    print("entidade(s) do cliente %r:" % cliente)
+    for e in nos:
+        print("  %s" % _descrever(e))
+    campos = [F_NOME, F_ID, F_CATEG, F_STATUS, F_ABERTURA, F_SOLUCAO, F_PRAZO, F_ENTIDADE]
+    q, i = [], 0
+    for e in nos:
+        for tipo in ("equals", "under"):
+            if i:
+                q.append(("criteria[%d][link]" % i, "OR"))
+            q.append(("criteria[%d][field]" % i, str(F_ENTIDADE)))
+            q.append(("criteria[%d][searchtype]" % i, tipo))
+            q.append(("criteria[%d][value]" % i, str(e["id"])))
+            i += 1
+    for i, c in enumerate(campos):
+        q.append(("forcedisplay[%d]" % i, str(c)))
+    headers = {"App-Token": APP, "Session-Token": sess}
+    saida, ini, total = [], 0, None
+    while True:
+        url = BASE + "/search/Ticket?" + urllib.parse.urlencode(q) + \
+              "&range=%d-%d" % (ini, ini + PAGINA - 1)
+        try:
+            d = _req(url, headers)
+        except urllib.error.HTTPError as erro:
+            # entidade sem nenhum chamado: o GLPI recusa a faixa em vez de
+            # devolver lista vazia
+            if erro.code == 400 and "RANGE_EXCEED" in erro.read().decode(
+                    "utf-8", "replace").upper():
+                break
+            raise
+        lote = d.get("data") or []
+        if total is None and d.get("totalcount") is not None:
+            total = int(d["totalcount"])
+        saida.extend(lote)
+        if not lote:
+            break
+        # Avança pelo que VEIO, não pelo que foi pedido. O servidor pode
+        # devolver menos que a faixa; somando o pedido, a diferença vira um
+        # buraco de chamados que ninguém vê — some do gráfico e pronto.
+        ini += len(lote)
+        if total is not None and ini >= total:
+            break
+
+    # O GLPI já disse quantos são. Se não vieram todos, é melhor parar do que
+    # imprimir um número menor com cara de certo.
+    if total is not None and len(saida) != total:
+        sys.exit("o GLPI contou %d chamado(s) na entidade e vieram %d.\n"
+                 "      Não vou seguir com número incompleto." % (total, len(saida)))
+    if not saida:
+        print("ATENÇÃO: a(s) entidade(s) acima não têm NENHUM chamado em tempo\n"
+              "         algum. É a entidade certa? Confira antes de aceitar o\n"
+              "         gráfico zerado.")
     return saida
 
 
@@ -243,14 +421,21 @@ def bloco_params(buckets):
 
 if __name__ == "__main__":
     tudo = "--tudo" in sys.argv[1:]
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    entidade, args, pulando = None, [], False
+    for a in sys.argv[1:]:
+        if pulando:
+            entidade, pulando = a, False
+        elif a == "--entidade":
+            pulando = True
+        elif not a.startswith("--"):
+            args.append(a)
     if len(args) < 3:
         sys.exit('uso: python glpi_sla.py "<cliente>" <AAAA-MM inicial> '
-                 '<AAAA-MM final> [--tudo]')
+                 '<AAAA-MM final> [--tudo] [--entidade <id>]')
     cliente, ini, fim = args[0], args[1], args[2]
     sess = abrir_sessao()
     try:
-        dados = buscar_chamados(sess, cliente)
+        dados = buscar_chamados(sess, cliente, entidade)
         print("chamados lidos para %r: %d" % (cliente, len(dados)))
         buckets = apurar(dados, ini, fim, tudo)
         print()
