@@ -61,7 +61,7 @@ from datetime import datetime
 import ambiente
 ambiente.carregar()   # lê o .env local, se houver
 
-BASE = os.environ.get("GLPI_URL", "URL-DO-GLPI")
+BASE = os.environ.get("GLPI_URL")
 APP = os.environ.get("GLPI_APP")
 USER = os.environ.get("GLPI_USER")
 
@@ -80,6 +80,8 @@ def _req(url, headers):
 
 
 def abrir_sessao():
+    if not BASE:
+        sys.exit("defina GLPI_URL no .env — não há endpoint padrão no código")
     if not APP or not USER:
         sys.exit("defina GLPI_APP e GLPI_USER no ambiente (não deixe token em arquivo)")
     d = _req(BASE + "/initSession",
