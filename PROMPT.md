@@ -45,8 +45,21 @@ conveniência: os textos dos slides 2 e 3 só existem lá. Abrir o vault e
 ler o dossiê do cliente é passo do processo — se esse passo não
 aconteceu, o ATE não está pronto, por mais completo que ele pareça.
 
-Acha a pasta que tem montar.py e gerar.py e trabalha nela. Usa a árvore
-como está: não troca de branch, não faz git pull, não commita.
+Acha a pasta que tem montar.py e gerar.py e trabalha nela. Antes de rodar
+qualquer coisa, ATUALIZA o repositório — máquina com código velho quebra na
+execução:
+
+    git fetch
+    git status -sb
+
+Se o `status -sb` disser que o branch está atrás do remoto (`behind`), roda:
+
+    git pull --ff-only
+
+Não troca de branch e não commita nada. Se o pull não for fast-forward, ou se
+algum arquivo modificado atrapalhar, PARA e me mostra o `git status` — não faz
+merge, não faz rebase, não descarta alteração minha. Me diz em uma linha se
+atualizou (e o que mudou) ou se já estava em dia.
 
 Não achou a pasta em lugar nenhum? Clona:
 
