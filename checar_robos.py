@@ -107,9 +107,12 @@ def main(caminho):
             print()
             print("=== quebras pedidas na planilha ===")
             for l in linhas:
-                if not l["quebra_por"]:
+                # O quebra_por e escrito a mao no CSV: normaliza caixa e
+                # espaco antes de comparar, como o execucoes.py faz.
+                q = l["quebra_por"].strip().lower()
+                if not q:
                     continue
-                t, q = l["tabela"], l["quebra_por"]
+                t = l["tabela"]
                 c = cols.get(t) or []
                 # "portal" na planilha nem sempre é uma coluna PORTAL: em
                 # algumas tabelas a mesma ideia está sob outro nome.
