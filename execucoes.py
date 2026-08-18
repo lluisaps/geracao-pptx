@@ -214,6 +214,9 @@ SQL_QUEBRA = {
 
 def consultar_quebra(tabelas, ini, fim, quebra):
     """Mesma contagem por mês, mas agrupada pela coluna da quebra."""
+    # O apelido chega em minúscula (a OBS passa pelo normalizar) ou como veio
+    # do robos.csv; as chaves aqui são o nome da coluna, em maiúscula.
+    quebra = quebra.strip().upper()
     if quebra not in SQL_QUEBRA:
         raise SystemExit("quebra %r desconhecida. Conhecidas: %s"
                          % (quebra, ", ".join(sorted(SQL_QUEBRA))))
