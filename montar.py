@@ -625,13 +625,13 @@ def textos_do_dossie(dossie, robo):
 
 
 # ------------------------------------------------------------------- dados
-def dados_execucoes(tabelas, ini, fim, quebra):
+def dados_execucoes(tabelas, ini, fim, quebra, robo=None):
     """grafico_execucoes, reaproveitando o execucoes.py."""
     import execucoes
     linhas = execucoes.consultar(tabelas, ini, fim)
     print("linhas retornadas: %d\n" % len(linhas))
     buckets = execucoes.apurar(linhas, ini, fim)
-    totais, pct = execucoes.relatorio(buckets)
+    totais, pct = execucoes.relatorio(buckets, robo)
     if not quebra:
         return execucoes.bloco_params(buckets, totais, pct), pct
     print()
@@ -764,7 +764,8 @@ def main():
         print("EXECUÇÕES (banco)")
         print("=" * 68)
         bloco_exec, pct = dados_execucoes(robo["tabelas"], ini, fim,
-                                          robo["quebra"])
+                                          robo["quebra"],
+                                          etiqueta_do_robo(robo))
         print()
         print("=" * 68)
         print("CHAMADOS (GLPI, com --tudo)")
@@ -785,9 +786,12 @@ def main():
         ("execucoes", [0] * len(meses)),
     ])
     if bloco_exec is not None:
+        import execucoes
+        calculado = ("%s%%" % execucoes.pct_texto(pct)) if pct is not None \
+            else "nada (nenhum status com 'sucesso')"
         params["grafico_execucoes"]["assertividade"] = (
             REVISAR + "calculado %s — confirmar contra a quebra por status"
-            % pct)
+            % calculado)
     params["grafico_sla"] = bloco_sla or OrderedDict([
         ("meses", meses),
         ("chamados", [0] * len(meses)),

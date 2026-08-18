@@ -6,6 +6,7 @@ params.json
 params-*.json
 logos/
 Tabelas Artemis.xlsx
+status-local.json
 
 # saída gerada
 ATE*.pptx

@@ -18,7 +18,12 @@ O gráfico do slide 4 é o TOTAL DO MÊS — uma barra por mês. A quebra por
 status_execucao serve só para a assertividade do trimestre:
 
     total do mês  = soma de todos os status daquele mês
-    assertividade = Sucesso / total, no trimestre inteiro
+    assertividade = (total − falha do robô) / total, no trimestre inteiro
+
+Quem decide o que é falha do robô é o status.py, não este arquivo: exceção de
+negócio (cadastro faltando no cliente, portal fora, regra que barrou o caso)
+conta como ACERTO, porque o robô fez o que devia. Status que o status.py não
+conhece faz o script PARAR — nunca vira chute de quem está rodando.
 """
 import csv
 import json
@@ -29,6 +34,7 @@ from collections import OrderedDict
 from datetime import date
 
 import ambiente
+import status as status_mod
 
 MAPA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robos.csv")
 
@@ -67,6 +73,11 @@ def normalizar(texto):
     sem_acento = "".join(c for c in unicodedata.normalize("NFD", texto or "")
                          if unicodedata.category(c) != "Mn")
     return " ".join(sem_acento.lower().split())
+
+
+def pct_texto(pct):
+    """Percentual como o ATE escreve: uma casa decimal, vírgula."""
+    return ("%.1f" % pct).replace(".", ",")
 
 
 def contar(tabelas, ini, fim):
@@ -293,7 +304,7 @@ def apurar(linhas, ini, fim):
     return buckets
 
 
-def relatorio(buckets):
+def relatorio(buckets, robo=None):
     status = []
     for b in buckets.values():
         for s in b:
@@ -318,16 +329,26 @@ def relatorio(buckets):
           + "%12d" % sum(totais))
 
     geral = sum(totais)
-    sucesso = next((v for k, v in soma_status.items()
-                    if k.strip().lower().startswith("sucesso")), None)
     print()
-    if sucesso is None:
-        print("assertividade: não achei um status começando com 'Sucesso'.")
-        print("               status vistos: %s" % ", ".join(status))
-        pct = None
-    else:
-        pct = round(sucesso / geral * 100) if geral else 0
-        print("assertividade = Sucesso / total = %d / %d = %d%%" % (sucesso, geral, pct))
+    if not geral:
+        print("assertividade: nenhuma execução no período — não há o que apurar.")
+        return totais, None
+
+    # A classificação mora no status.py: mesma regra em qualquer máquina, e
+    # status novo faz o script parar em vez de virar chute de quem rodou.
+    pct, por_balde, baldes = status_mod.apurar(soma_status, robo)
+    rotulo = {status_mod.SUCESSO: "sucesso",
+              status_mod.NEGOCIO: "exceção de negócio (conta como acerto)",
+              status_mod.FALHA: "FALHA DO ROBÔ"}
+    for balde in status_mod.BALDES:
+        itens = [(k, v) for k, v in soma_status.items() if baldes[k] == balde]
+        if not itens:
+            continue
+        print("%s — %d:" % (rotulo[balde], por_balde[balde]))
+        for k, v in itens:
+            print("    %-7d %s" % (v, k))
+    print("  assertividade = (%d - %d) / %d = %s%%"
+          % (geral, por_balde[status_mod.FALHA], geral, pct_texto(pct)))
     return totais, pct
 
 
@@ -338,7 +359,8 @@ def bloco_params(buckets, totais, pct):
         "%s/%02d" % (ABREV[m - 1], a % 100) for (a, m) in chaves)
     saida = OrderedDict([("titulo", titulo)])
     if pct is not None:
-        saida["assertividade"] = "Assertividade de %d%% no trimestre" % pct
+        saida["assertividade"] = ("Assertividade de %s%% no trimestre"
+                                  % pct_texto(pct))
     saida["meses"] = meses
     saida["execucoes"] = totais
     return saida
@@ -352,7 +374,8 @@ def bloco_params_quebra(buckets, categorias, pct):
         "%s/%02d" % (ABREV[m - 1], a % 100) for (a, m) in chaves)
     saida = OrderedDict([("titulo", titulo)])
     if pct is not None:
-        saida["assertividade"] = "Assertividade de %d%% no trimestre" % pct
+        saida["assertividade"] = ("Assertividade de %s%% no trimestre"
+                                  % pct_texto(pct))
     saida["categorias"] = categorias
     saida["series"] = [
         OrderedDict([("nome", MESES[m - 1]),

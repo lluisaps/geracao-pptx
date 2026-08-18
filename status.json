@@ -1,0 +1,3 @@
+{
+  "_nota": "Classificacao de status_execucao por robo. Baldes: sucesso | excecao_negocio | falha_robo. A assertividade do ATE e (total - falha_robo) / total, entao falha_robo e SO quando o robo errou: dado faltando no cliente, portal fora do ar e regra de negocio que barrou o caso sao excecao_negocio e contam como acerto. ESTE ARQUIVO FICA VAZIO NO REPOSITORIO DE PROPOSITO: a chave e o codigo do robo, que e dado de cliente e nao se versiona. As entradas reais moram no status-local.json, que esta no .gitignore e tem precedencia. O que se repete entre clientes esta nos PADROES do status.py e vale para todo mundo. Robo novo: rode o montar.py, ele para e imprime o bloco pronto para colar no status-local.json. Formato: {\"<robo>\": {\"<status>\": \"<balde>\"}}."
+}
