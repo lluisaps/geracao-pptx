@@ -1,7 +1,9 @@
 # Gerador de ATE em .pptx
 
 Gera a apresentação de Acompanhamento Tático/Estratégico a partir do template
-institucional da Yank. A saída é um `.pptx` **nativo**: texto selecionável,
+institucional da Yank, montado sobre o **modelo oficial de apresentação** (fundo
+escuro, fonte Urbane). O template antigo, de fundo claro, está guardado na
+branch `template-antigo`. A saída é um `.pptx` **nativo**: texto selecionável,
 gráficos de verdade, tudo editável no PowerPoint.
 
 O layout, as fontes, as cores e a decoração vêm intactos do `template.pptx` —
@@ -32,15 +34,17 @@ sistema, via `soffice`). Se não achar nenhum dos dois, avisa e segue — o
 `.pptx` sai igual, só sem a conferência automática. Nada disso é necessário
 para gerar.
 
-## A capa vai sem logo
+## A capa não tem logo de cliente
 
-Não é configuração: o gerador **sempre** cobre a área do logo com o
-`sem-logo.png`, um PNG transparente de 342×101 versionado na raiz. A caixa da
-capa fica vazia em todos os ATEs, e o `params.json` não tem campo de logo.
+O modelo oficial traz só o logo da Yank na capa, fixo no template. O gerador
+não lê logo de lugar nenhum e o `params.json` não tem campo de logo — não há o
+que pedir, procurar ou anexar.
 
-Isso existe porque o `template.pptx` traz o logo de um cliente antigo embutido.
-Sem o placeholder, todo ATE sairia com o logo de outra empresa na capa. Como o
-gerador não lê logo de lugar nenhum, não há o que pedir, procurar ou anexar.
+## Fontes
+
+O modelo oficial usa **Urbane** (Medium e Bold). Ela precisa estar instalada
+na máquina que abre o `.pptx`; sem ela o PowerPoint troca por outra fonte e os
+textos mudam de largura.
 
 ## O caminho curto: `montar.py`
 
@@ -76,8 +80,8 @@ banco e volume de execução — nada disso entra em commit. Os dossiês, que tr
 os textos dos slides 2 e 3, ficam no vault do Obsidian e também não são
 copiados para cá.
 
-O que fica versionado é só o mecanismo: os scripts, o template, o
-`sem-logo.png` e a documentação. O `params.exemplo.json` é fictício de
+O que fica versionado é só o mecanismo: os scripts, o template e a
+documentação. O `params.exemplo.json` é fictício de
 propósito, e os exemplos do [PROMPT.md](PROMPT.md) são genéricos — nenhum nome
 de cliente, código de robô ou nome de tabela real aparece em arquivo
 versionado.
@@ -86,18 +90,18 @@ versionado.
 
 | Campo | Slide | O que muda |
 |---|---|---|
-| `competencia` | 1 | data na pílula ao lado do título |
-| `resumo_escopo` | 2 | descrição da etapa 1 da agenda |
-| `escopo_objetivo` | 3 | texto do escopo; `**termo**` sai com realce amarelo |
+| `competencia` | 1 | data em azul, abaixo do título da capa |
+| `resumo_escopo` | 2 | descrição do item 1 da agenda |
+| `escopo_objetivo` | 3 | texto do escopo; `**termo**` sai em azul e negrito |
 | `grafico_execucoes.titulo` | 4 | título acima do gráfico |
-| `grafico_execucoes.assertividade` | 4 | nota à direita do gráfico |
+| `grafico_execucoes.assertividade` | 4 | nota abaixo do gráfico; vazia, a nota some |
 | `grafico_execucoes.meses` / `execucoes` | 4 | uma barra por mês, com o total do mês |
 | `grafico_execucoes.categorias` / `series` | 4 | alternativa: gráfico quebrado, uma série por mês |
 | `grafico_sla.meses` / `chamados` / `dentro_do_sla` | 5 | dados do gráfico |
 | `dificuldades` | 6 | tópicos das duas colunas |
 | `pontos_de_atencao` | 7 | tópicos das duas colunas |
 
-Os textos aceitam `**assim**` para destacar: amarelo no slide 3, negrito nos
+Os textos aceitam `**assim**` para destacar: azul no slide 3, negrito nos
 slides 6 e 7.
 
 ## De onde vem a tabela do robô
@@ -215,7 +219,6 @@ versionado:
   montar.py            monta o params.json a partir da planilha e do dossiê
   gerar.py             o gerador
   template.pptx        o modelo institucional (não editar)
-  sem-logo.png         placeholder transparente da capa
   params.exemplo.json  exemplo fictício, copie para params.json
   execucoes.py         extrai as execuções do trimestre
   glpi_sla.py          extrai o SLA do GLPI
@@ -232,12 +235,17 @@ local, nunca versionado:
 
 ## Detalhes de implementação
 
-Os gráficos do template apontam para uma planilha **externa**, que não existe
-mais. Por isso o `chart.replace_data()` do python-pptx não funciona aqui — o
-gerador escreve direto no cache embutido do gráfico, que é de onde o PowerPoint
-desenha. Efeito colateral: clicar em "Editar Dados" no PowerPoint tenta abrir a
-planilha ausente. Isso já acontecia no template original.
+Os gráficos do template têm a planilha **embutida**, então o gerador usa
+`chart.replace_data()`: cache e planilha mudam juntos, e "Editar Dados" no
+PowerPoint abre os números do ATE. Cores e formato de cada série vêm do
+template.
 
-A nota de assertividade fica num desenho dentro do gráfico
-(`ppt/drawings/drawing1.xml`), que o python-pptx não expõe; ela é aplicada num
-segundo passo, direto no pacote.
+O gráfico de SLA é um combo: barras de chamados no eixo principal e a linha de
+"Dentro do SLA" (uma fração, rótulo `0%`) num eixo secundário de 0 a 115%. Os
+dois eixos de valor estão **escondidos, não apagados** — com o eixo apagado o
+PowerPoint desenha a linha na escala dos chamados e ela cola no chão.
+
+O gerador acha cada caixa pelo nome (`Capa`, `Agenda`, `Escopo`,
+`Grafico Execucoes`, `Assertividade`, `Grafico SLA`, `Total`, `Dentro`, `Fora`,
+`Esquerda`, `Direita`). Quem editar o `template.pptx` à mão precisa manter
+esses nomes (Página Inicial → Organizar → Painel de Seleção).

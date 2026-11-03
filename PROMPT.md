@@ -216,7 +216,7 @@ SLIDE 7 — pontos de atenção / melhorias
 
 
 Os números dos tópicos saem automáticos — não escreve 1., 2., 3.
-Use **assim** para destacar: amarelo no slide 3, negrito nos slides 6 e 7.
+Use **assim** para destacar: azul no slide 3, negrito nos slides 6 e 7.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -271,15 +271,11 @@ Obsidian, ou da pasta que tiver um `.obsidian` dentro. As colunas da planilha
 são achadas pelo cabeçalho, não pela posição, e a carteira pode ter qualquer
 tamanho — cada gerente tem a sua.
 
-## A capa vai sem logo
+## A capa não tem logo de cliente
 
-Não é opção nem configuração: o `gerar.py` sempre cobre a área do logo com o
-`sem-logo.png`, um PNG transparente de 342×101 versionado na raiz. A caixa da
-capa fica vazia em todos os ATEs.
-
-Isso existe porque o `template.pptx` já trouxe logo de cliente embutido no
-passado. O gerador não lê logo de lugar nenhum e o `params.json` não tem campo
-de logo — não há o que perguntar, procurar ou anexar.
+O `template.pptx` segue o modelo oficial da Yank: a capa traz só o logo da
+Yank, fixo. O gerador não lê logo de lugar nenhum e o `params.json` não tem
+campo de logo — não há o que perguntar, procurar ou anexar.
 
 ## Sobre o `--conferir`
 
