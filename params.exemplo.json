@@ -1,11 +1,25 @@
 {
   "cliente": "Cliente Exemplo",
   "competencia": "Jun/26",
-  "resumo_escopo": "Automação RPA para a rotina de exemplo",
-  "escopo_objetivo": "Automatizar a rotina descrita aqui, usando **termo destacado** para o que precisar de realce azul neste slide.",
+  "escopo": "Robô que lê a rotina de exemplo e lança os itens no **sistema de destino**, com relatório por e-mail.",
+  "valor_gerado": {
+    "itens_entregues": 3000,
+    "minutos_por_item": 5,
+    "custo_hora": 60,
+    "entregas": [
+      "**2.000** itens lançados no sistema de destino",
+      "**1.000** cadastros conferidos e atualizados"
+    ]
+  },
+  "disponibilidade": {
+    "percentual": 99.95,
+    "horas_indisponivel": 1.1,
+    "horas_periodo": 2184,
+    "chamados": 1
+  },
   "grafico_execucoes": {
     "titulo": "Execuções - Abr/26, Mai/26, Jun/26",
-    "assertividade": "Assertividade de 99% no trimestre",
+    "assertividade": 99.1,
     "meses": [
       "Abril",
       "Maio",
@@ -20,11 +34,36 @@
   "_grafico_execucoes_quebrado": {
     "_comentario": "Formato alternativo: use categorias+series no lugar de meses+execucoes quando o robô tiver quebra. Uma série por mês, uma categoria por valor.",
     "titulo": "Execuções - Abr/26, Mai/26, Jun/26",
-    "categorias": ["ALFA", "BETA", "GAMA"],
+    "categorias": [
+      "ALFA",
+      "BETA",
+      "GAMA"
+    ],
     "series": [
-      { "nome": "Abril", "valores": [500, 300, 200] },
-      { "nome": "Maio", "valores": [550, 330, 220] },
-      { "nome": "Junho", "valores": [600, 360, 240] }
+      {
+        "nome": "Abril",
+        "valores": [
+          500,
+          300,
+          200
+        ]
+      },
+      {
+        "nome": "Maio",
+        "valores": [
+          550,
+          330,
+          220
+        ]
+      },
+      {
+        "nome": "Junho",
+        "valores": [
+          600,
+          360,
+          240
+        ]
+      }
     ]
   },
   "grafico_sla": {
@@ -45,48 +84,38 @@
       3
     ]
   },
-  "dificuldades": {
-    "numero_inicial": 1,
+  "melhorias": {
     "esquerda": [
       {
-        "topico": "Primeiro tópico",
+        "topico": "O que foi entregue no robô",
         "itens": [
-          "Item do primeiro tópico, com **trecho em negrito**."
-        ]
-      },
-      {
-        "topico": "Segundo tópico",
-        "itens": [
-          "Item do segundo tópico."
+          "Nova regra de validação, com **trecho em negrito**."
         ]
       }
     ],
     "direita": [
       {
-        "topico": "Terceiro tópico",
+        "topico": "O que fizemos para evitar falhas",
         "itens": [
-          "Primeiro item",
-          "Segundo item",
-          "Terceiro item"
+          "Tratamento automático de indisponibilidade do portal."
         ]
       }
     ]
   },
-  "pontos_de_atencao": {
-    "numero_inicial": 1,
+  "proximas_evolucoes": {
     "esquerda": [
       {
-        "topico": "Tópico da esquerda",
+        "topico": "Próximas evoluções",
         "itens": [
-          "Item correspondente."
+          "Evolução prevista para o próximo trimestre."
         ]
       }
     ],
     "direita": [
       {
-        "topico": "Tópico da direita",
+        "topico": "Oportunidades no segmento",
         "itens": [
-          "Item correspondente."
+          "**Assunto de exemplo** — em operação em 2 clientes do segmento"
         ]
       }
     ]

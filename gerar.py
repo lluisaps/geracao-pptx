@@ -5,8 +5,11 @@ Gera o ATE em .pptx a partir do template institucional + params.json.
     python gerar.py params.json saida.pptx
 
 Só o conteúdo muda: layout, fontes, cores e decoração vêm intactos do template.
-Use **texto** dentro das strings para destacar (azul no slide 3, negrito nos
-slides 6 e 7).
+Use **texto** dentro das strings para destacar (azul no escopo do slide 2,
+negrito nas entregas e nos slides 4 e 5).
+
+Slides: 1 capa · 2 resumo executivo (valor gerado) · 3 indicadores de
+operação · 4 melhorias entregues · 5 próximas evoluções · 6 encerramento.
 """
 import json
 import os
@@ -128,6 +131,12 @@ def montar_coluna(shape, blocos, numero_inicial, proto_top, proto_item, proto_va
 
         if bi < len(blocos) - 1 and proto_vazio is not None:
             txb.append(deepcopy(proto_vazio))
+
+    # Caixa de texto sem nenhum <a:p> é XML inválido: coluna vazia faz o
+    # PowerPoint recusar o arquivo inteiro.
+    if txb.find(qn("a:p")) is None:
+        txb.append(deepcopy(proto_vazio) if proto_vazio is not None
+                   else txb.makeelement(qn("a:p"), {}))
     return n
 
 
@@ -150,6 +159,63 @@ def trocar_titulo(chart, texto):
     trocar_texto(pt, texto)
 
 
+# ------------------------------------------------------------- números
+def milhar(n):
+    """9470 -> '9.470' (formato brasileiro, sem casas)."""
+    return "{:,.0f}".format(n).replace(",", ".")
+
+
+def decimal_br(v, casas=1):
+    t = ("{:,.%df}" % casas).format(v)
+    return t.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def reais(v):
+    """Valor curto para cartão: R$ 950 / R$ 53,2 mil / R$ 1,4 mi."""
+    if v >= 1e6:
+        return "R$ %s mi" % decimal_br(v / 1e6)
+    if v >= 1e4:
+        return "R$ %s mil" % decimal_br(v / 1e3)
+    return "R$ %s" % milhar(v)
+
+
+def pct_piso(v):
+    """Percentual com uma casa, arredondado PARA BAIXO: 99,99 vira 99,9%, e
+    só sai 100% quando foi 100% mesmo. Arredondar para cima anunciaria
+    disponibilidade total num trimestre que teve parada."""
+    if v >= 100:
+        return "100%"
+    piso = int(v * 10) / 10.0
+    return "%s%%" % decimal_br(piso, 0 if piso.is_integer() else 1)
+
+
+A_CONFIRMAR = "a confirmar"
+
+
+def preencher_cartao(slide, nome, numero, legenda, detalhe):
+    ps = achar(slide, nome).text_frame._txBody.findall(qn("a:p"))
+    trocar_texto(ps[0], numero)
+    if numero == A_CONFIRMAR:
+        # o texto não cabe no corpo do número; diminui só neste cartão
+        runs_de(ps[0])[0].find(qn("a:rPr")).set("sz", "1600")
+    trocar_texto(ps[1], legenda)
+    trocar_texto(ps[2], detalhe)
+
+
+def montar_lista(shape, itens):
+    """Mantém o 1º parágrafo (título) e refaz os itens a partir do 2º."""
+    txb = shape.text_frame._txBody
+    ps = txb.findall(qn("a:p"))
+    proto = deepcopy(ps[1])
+    for p in ps[1:]:
+        txb.remove(p)
+    for item in itens:
+        p = deepcopy(proto)
+        r = runs_de(p)[0]
+        escrever(p, item, r, negritar(r))
+        txb.append(p)
+
+
 # ------------------------------------------------------------------ principal
 def gerar(params, saida):
     cfg = json.load(open(params, encoding="utf-8"))
@@ -162,23 +228,79 @@ def gerar(params, saida):
     capa = achar(s[0], "Capa")
     trocar_texto(capa.text_frame._txBody.findall(qn("a:p"))[1], cfg["competencia"])
 
-    # -------------------------------------------------------- slide 2: agenda
-    # O item 1 é título + quebra de linha + descrição; só a descrição muda.
-    p = achar(s[1], "Agenda").text_frame._txBody.findall(qn("a:p"))[0]
-    runs_de(p)[-1].find(qn("a:t")).text = cfg["resumo_escopo"]
-
-    # -------------------------------------------------- slide 3: escopo/obj.
-    p = achar(s[2], "Escopo").text_frame._txBody.findall(qn("a:p"))[0]
+    # ----------------------------------------- slide 2: resumo executivo
+    p = achar(s[1], "Escopo").text_frame._txBody.findall(qn("a:p"))[0]
     r_normal, r_marca = (deepcopy(r) for r in runs_de(p)[:2])  # 2º run: azul
-    escrever(p, cfg["escopo_objetivo"], r_normal, r_marca)
+    escrever(p, cfg["escopo"], r_normal, r_marca)
 
-    # ------------------------------------------------- slide 4: execuções
-    # Dois formatos. O normal é uma barra por mês, com o TOTAL do mês — a
-    # quebra por status serve só para a assertividade, não vira eixo. O outro
-    # é o quebrado (por portal, cliente ou etapa): uma série por mês e uma
-    # categoria por valor, que é a forma do gráfico no template.
     g = cfg["grafico_execucoes"]
-    grafico = achar(s[3], "Grafico Execucoes").chart
+    volume = (sum(sum(x["valores"]) for x in g["series"]) if g.get("series")
+              else sum(g["execucoes"]))
+    preencher_cartao(s[1], "Volume", milhar(volume), "itens processados",
+                     "no trimestre")
+
+    # Horas e economia são estimativa: itens entregues × tempo manual médio,
+    # e horas × custo/hora. As duas entradas vêm do cliente; sem elas o
+    # cartão diz "a confirmar" em vez de inventar um tempo padrão.
+    v = cfg.get("valor_gerado") or {}
+    itens = v.get("itens_entregues")
+    minutos = v.get("minutos_por_item")
+    custo = v.get("custo_hora")
+    horas = itens * minutos / 60.0 if itens and minutos else None
+    if horas is not None:
+        casas = 0 if float(minutos).is_integer() else 1
+        preencher_cartao(s[1], "Horas", "%s h" % milhar(horas),
+                         "horas de trabalho poupadas",
+                         "%s itens × %s min" % (milhar(itens),
+                                                decimal_br(minutos, casas)))
+    else:
+        preencher_cartao(s[1], "Horas", A_CONFIRMAR, "horas de trabalho poupadas",
+                         "falta o tempo manual por item")
+    if horas is not None and custo:
+        preencher_cartao(s[1], "Economia", reais(horas * custo), "economia estimada",
+                         "%s dias úteis · R$ %s/h" % (milhar(horas / 8), milhar(custo)))
+    else:
+        preencher_cartao(s[1], "Economia", A_CONFIRMAR, "economia estimada",
+                         "falta o custo/hora da equipe" if horas is not None
+                         else "depende das horas poupadas")
+
+    # Disponibilidade: o montar.py estima pelos chamados de Sustentação do
+    # GLPI; quem tiver número melhor (healthcheck) sobrescreve e diz a fonte.
+    disp = cfg.get("disponibilidade") or {}
+    if disp.get("percentual") is not None:
+        pct_disp = pct_piso(disp["percentual"])
+        h = disp.get("horas_indisponivel")
+        if disp.get("fonte"):
+            resumo_disp = detalhe_disp = disp["fonte"]
+        else:
+            resumo_disp = "pelos chamados de sustentação"
+            detalhe_disp = ("%s h de parada no trimestre" % decimal_br(h) if h
+                            else "nenhuma parada registrada")
+    else:
+        pct_disp = A_CONFIRMAR
+        resumo_disp = detalhe_disp = "sem fonte no período"
+    preencher_cartao(s[1], "Disponibilidade", pct_disp, "disponibilidade estimada",
+                     resumo_disp)
+
+    montar_lista(achar(s[1], "Entregas"), v.get("entregas", []))
+
+    if horas is None or not custo:
+        nota = ("Horas e economia: falta o cliente informar o tempo manual "
+                "médio por item e o custo/hora da equipe.")
+    else:
+        nota = ("Horas e economia estimadas com o tempo manual médio por item "
+                "e o custo/hora informados pelo cliente.")
+    if disp.get("percentual") is not None and not disp.get("fonte"):
+        nota += (" Disponibilidade estimada pelo tempo dos chamados de "
+                 "sustentação, 24x7.")
+    trocar_texto(achar(s[1], "Nota").text_frame._txBody.findall(qn("a:p"))[0], nota)
+
+    # ------------------------------------- slide 3: indicadores de operação
+    # Execuções em dois formatos. O normal é uma barra por mês, com o TOTAL do
+    # mês — a quebra por status serve só para a assertividade, não vira eixo.
+    # O outro é o quebrado (por portal, cliente ou etapa): uma série por mês e
+    # uma categoria por valor, que é a forma do gráfico no template.
+    grafico = achar(s[2], "Grafico Execucoes").chart
     quebrado = bool(g.get("series"))
     if quebrado:
         escrever_grafico(grafico, g["categorias"],
@@ -191,54 +313,51 @@ def gerar(params, saida):
         grafico.legend.include_in_layout = False
     trocar_titulo(grafico, g["titulo"])
 
-    nota = achar(s[3], "Assertividade")
-    if g.get("assertividade"):
-        trocar_texto(nota.text_frame._txBody.findall(qn("a:p"))[0], g["assertividade"])
-    else:
-        nota._element.getparent().remove(nota._element)
+    ass = g.get("assertividade")
+    if isinstance(ass, (int, float)):
+        ass = pct_piso(ass)
+    preencher_cartao(s[2], "Assertividade", ass or A_CONFIRMAR,
+                     "assertividade do robô", "exceção de negócio conta como acerto")
 
-    # ------------------------------------------------------- slide 5: SLA
     sla = cfg["grafico_sla"]
     total = sum(sla["chamados"])
     dentro = sum(sla["dentro_do_sla"])
-    fora = total - dentro
     pct_dentro = round(dentro / total * 100) if total else 0
-    pct_fora = 100 - pct_dentro
 
     # A linha de "Dentro do SLA" guarda uma fração, no eixo secundário; com o
     # padrão "#,##0" o rótulo saía arredondado para inteiro (0,5 virava "1").
-    grafico = achar(s[4], "Grafico SLA").chart
+    grafico = achar(s[2], "Grafico SLA").chart
     escrever_grafico(grafico, sla["meses"], [
         ("Total Chamados", sla["chamados"]),
         ("Dentro do SLA", [round(d / c, 10) if c else 0
                            for d, c in zip(sla["dentro_do_sla"], sla["chamados"])],
          "0%"),
     ])
-    trocar_titulo(grafico, sla["titulo"])
+    trocar_titulo(grafico, sla.get("titulo", "Chamados por Mês - SLA"))
+    if total:
+        preencher_cartao(s[2], "SLA", "%d%%" % pct_dentro, "chamados dentro do SLA",
+                         "%d de %d chamados" % (dentro, total))
+    else:
+        preencher_cartao(s[2], "SLA", "—", "chamados dentro do SLA",
+                         "nenhum chamado no período")
+    preencher_cartao(s[2], "Disponibilidade", pct_disp, "disponibilidade estimada",
+                     detalhe_disp)
 
-    cartoes = [
-        ("Total", str(total), "Total de Chamados"),
-        ("Dentro", "%d%%" % pct_dentro, "Dentro do SLA (%d)" % dentro),
-        ("Fora", "%d%%" % pct_fora, "Fora do SLA (%d)" % fora),
-    ]
-    for nome, numero, legenda in cartoes:
-        ps = achar(s[4], nome).text_frame._txBody.findall(qn("a:p"))
-        trocar_texto(ps[0], numero)
-        trocar_texto(ps[1], legenda)
+    print("  SLA: total=%d  dentro=%d (%d%%)" % (total, dentro, pct_dentro))
+    print("  valor: volume=%d  horas=%s  disponibilidade=%s"
+          % (volume, "—" if horas is None else milhar(horas), pct_disp))
 
-    print("  SLA: total=%d  dentro=%d (%d%%)  fora=%d (%d%%)"
-          % (total, dentro, pct_dentro, fora, pct_fora))
-
-    # ----------------------------------- slides 6 e 7: colunas com tópicos
-    for idx, chave in ((5, "dificuldades"), (6, "pontos_de_atencao")):
+    # ------------------------- slides 4 e 5: colunas com tópicos numerados
+    for idx, chave in ((3, "melhorias"), (4, "proximas_evolucoes")):
         bloco = cfg[chave]
         forma_esq = achar(s[idx], "Esquerda")
         proto_top, proto_item, proto_vazio = prototipos(forma_esq)
         if proto_item is None:
             proto_item = proto_top
-        n = montar_coluna(forma_esq, bloco["esquerda"], bloco.get("numero_inicial", 1),
+        n = montar_coluna(forma_esq, bloco.get("esquerda", []),
+                          bloco.get("numero_inicial", 1),
                           proto_top, proto_item, proto_vazio)
-        montar_coluna(achar(s[idx], "Direita"), bloco["direita"], n,
+        montar_coluna(achar(s[idx], "Direita"), bloco.get("direita", []), n,
                       proto_top, proto_item, proto_vazio)
 
     prs.save(saida)

@@ -12,3 +12,6 @@ status-local.json
 ATE*.pptx
 conferencia*/
 __pycache__/
+
+# tempo manual, custo/hora e frases de entrega por robô (dado de cliente)
+valor-local.json

@@ -8,6 +8,10 @@ params.json.
     python glpi_sla.py "<cliente>" 2026-04 2026-06
     python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo
     python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo --entidade 123
+    python glpi_sla.py "<cliente>" 2026-04 2026-06 --tudo --robo ABC01
+
+O --robo acrescenta a disponibilidade estimada do robô (ver o bloco
+"disponibilidade" para a regra).
 
 Antes de buscar, o nome do cliente é resolvido para o(s) nó(s) de entidade do
 GLPI, e os chamados saem desses nós e de todas as sub-entidades deles, sempre
@@ -409,6 +413,100 @@ def relatorio_exclusoes(contagem, tudo):
         print("exclusões do dashboard: nenhum chamado do período foi descartado.")
 
 
+# ----------------------------------------------------------- disponibilidade
+#
+# Não existe registro de "robô fora do ar" no banco (as tabelas de
+# monitoramento pararam em 2022) e o intervalo entre execuções não serve: os
+# robôs rodam por demanda, então dia sem execução é dia sem demanda.
+#
+# A fonte é o GLPI, e a categoria importa:
+#   - "Monitoramento > Acompanhamento" NÃO é queda. É a checagem de rotina, e
+#     quase todos fecham em minutos. Usar esses chamados inventaria queda.
+#   - "Sustentação" (Correção, Análise) é o robô com problema. É isto que
+#     conta como indisponibilidade, do momento em que o chamado abriu até a
+#     solução.
+#
+# Valem os chamados abertos no nó do robô e os do ambiente compartilhado do
+# cliente (produção, nó raiz): problema no ambiente para todos os robôs.
+# Chamados de OUTROS robôs do mesmo cliente ficam de fora.
+#
+# É uma ESTIMATIVA e o slide diz isso. Ela pende para o lado conservador:
+# o chamado conta inteiro como indisponível, mesmo que o robô tenha voltado
+# antes de alguém registrar a solução.
+
+CODIGO_ROBO = re.compile(r"^[A-Z]{2,4}\d{2,3}\b")
+
+
+def _no_do_chamado(t):
+    return (html.unescape(t.get(str(F_ENTIDADE)) or "")).split(">")[-1].strip()
+
+
+def disponibilidade(chamados, ini_mes, fim_mes, robos, agora=None):
+    """Disponibilidade estimada do(s) robô(s) no período, 24x7.
+
+    robos = códigos como estão no nó do GLPI ("ABC01"). Devolve um dict com
+    percentual, horas indisponíveis, horas do período e os chamados usados.
+    """
+    a0, m0 = [int(x) for x in ini_mes.split("-")]
+    a1, m1 = [int(x) for x in fim_mes.split("-")]
+    inicio = datetime(a0, m0, 1)
+    fim = datetime(a1 + (m1 == 12), m1 % 12 + 1, 1)
+    agora = agora or datetime.now()
+    fim_efetivo = min(fim, agora)
+    alvo = {r.upper() for r in robos}
+
+    usados, faixas = [], []
+    for t in chamados:
+        if "Sustenta" not in html.unescape(t.get(str(F_CATEG)) or ""):
+            continue
+        no = _no_do_chamado(t)
+        codigo = CODIGO_ROBO.match(no.upper())
+        if codigo and codigo.group(0) not in alvo:
+            continue                               # é de outro robô
+        ab = _dt(t.get(str(F_ABERTURA)))
+        sol = _dt(t.get(str(F_SOLUCAO))) or agora
+        if not ab or sol <= inicio or ab >= fim_efetivo:
+            continue
+        faixas.append((max(ab, inicio), min(sol, fim_efetivo)))
+        usados.append(t)
+
+    # junta faixas sobrepostas: dois chamados do mesmo incidente não dobram
+    horas_fora, atual = 0.0, None
+    for a, b in sorted(faixas):
+        if atual and a <= atual[1]:
+            atual = (atual[0], max(atual[1], b))
+            continue
+        if atual:
+            horas_fora += (atual[1] - atual[0]).total_seconds() / 3600
+        atual = (a, b)
+    if atual:
+        horas_fora += (atual[1] - atual[0]).total_seconds() / 3600
+
+    horas = (fim_efetivo - inicio).total_seconds() / 3600
+    pct = 100.0 * (1 - horas_fora / horas) if horas > 0 else None
+    return OrderedDict([("percentual", pct),
+                        ("horas_indisponivel", round(horas_fora, 1)),
+                        ("horas_periodo", round(horas)),
+                        ("chamados", len(usados)),
+                        ("_usados", usados)])
+
+
+def relatorio_disponibilidade(d, robos):
+    print("disponibilidade estimada de %s (chamados de Sustentação do robô "
+          "e do ambiente do cliente, 24x7):" % ", ".join(robos))
+    for t in sorted(d["_usados"], key=lambda t: t.get(str(F_ABERTURA)) or ""):
+        print("  %s -> %s  %-28s %s"
+              % ((t.get(str(F_ABERTURA)) or "")[:16],
+                 (t.get(str(F_SOLUCAO)) or "em aberto")[:16],
+                 html.unescape(t.get(str(F_CATEG)) or "").split(">")[-1].strip()[:28],
+                 _no_do_chamado(t)))
+    if not d["_usados"]:
+        print("  nenhum chamado de Sustentação no período.")
+    print("  %.1f h indisponível de %d h  ->  %s"
+          % (d["horas_indisponivel"], d["horas_periodo"],
+             "—" if d["percentual"] is None else "%.2f%%" % d["percentual"]))
+
+
 def bloco_params(buckets):
     meses, chamados, dentro = [], [], []
     for (a, m), b in buckets.items():
@@ -423,17 +521,19 @@ def bloco_params(buckets):
 
 if __name__ == "__main__":
     tudo = "--tudo" in sys.argv[1:]
-    entidade, args, pulando = None, [], False
+    entidade, robos, args, pulando = None, [], [], None
     for a in sys.argv[1:]:
-        if pulando:
-            entidade, pulando = a, False
-        elif a == "--entidade":
-            pulando = True
+        if pulando == "--entidade":
+            entidade, pulando = a, None
+        elif pulando == "--robo":
+            robos, pulando = [r.strip() for r in a.split(",") if r.strip()], None
+        elif a in ("--entidade", "--robo"):
+            pulando = a
         elif not a.startswith("--"):
             args.append(a)
     if len(args) < 3:
         sys.exit('uso: python glpi_sla.py "<cliente>" <AAAA-MM inicial> '
-                 '<AAAA-MM final> [--tudo] [--entidade <id>]')
+                 '<AAAA-MM final> [--tudo] [--entidade <id>] [--robo <código>]')
     cliente, ini, fim = args[0], args[1], args[2]
     sess = abrir_sessao()
     try:
@@ -447,6 +547,9 @@ if __name__ == "__main__":
         print()
         print('bloco "grafico_sla" para o params.json:')
         print(json.dumps(bloco_params(buckets), ensure_ascii=False, indent=2))
+        if robos:
+            print()
+            relatorio_disponibilidade(disponibilidade(dados, ini, fim, robos), robos)
     finally:
         try:
             _req(BASE + "/killSession", {"App-Token": APP, "Session-Token": sess})

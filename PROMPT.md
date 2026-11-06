@@ -3,15 +3,30 @@
 Este arquivo tem o texto pronto para pedir um ATE a uma IA com acesso à
 máquina, e a explicação de onde sai cada pedaço do slide.
 
-Copie o bloco abaixo e troque **só o cabeçalho e os slides 6 e 7**. Todo o
+O ATE mostra **valor de negócio**, não só operação. São seis slides:
+
+1. Capa
+2. **Resumo Executivo — Valor Gerado**: escopo em uma faixa, quatro cartões
+   (itens processados, horas poupadas, economia estimada, disponibilidade) e
+   a lista do que foi entregue no trimestre
+3. **Indicadores de Operação**: execuções e SLA lado a lado, mais os cartões
+   de assertividade, SLA e disponibilidade
+4. **Melhorias Entregues no Período**: o que foi entregue no robô e o que se
+   fez para evitar falhas
+5. **Próximas Evoluções e Oportunidades**: o que vem para o robô e automações
+   que outros clientes do mesmo segmento já usam
+6. Encerramento
+
+Copie o bloco abaixo e troque **só o cabeçalho e os slides 4 e 5**. Todo o
 resto é fixo — é o que impede o assistente de reinventar o processo a cada mês.
 
-O **objetivo e o escopo (slides 2 e 3) você não escreve**: eles saem do dossiê
-do cliente no Obsidian, e quem vai buscar é o `montar.py`.
+O **escopo você não escreve**: ele sai do Obsidian, e quem vai buscar é o
+`montar.py`.
 
 **Nenhum dado de cliente entra neste arquivo.** Os exemplos são todos
-genéricos de propósito — nome de cliente, código de robô, nome de tabela e
-volume ficam na planilha e no dossiê, que são locais.
+genéricos de propósito — nome de cliente, código de robô, nome de tabela,
+volume, tempo manual e custo/hora ficam na planilha, no Obsidian e nos
+arquivos `-local.json`, que são locais.
 
 ---
 
@@ -27,6 +42,8 @@ Trimestre:    <AAAA-MM> a <AAAA-MM>
 Competência:  <Mmm/AA>   (opcional — sem isto, o último mês do trimestre)
 Robô:                    (opcional — só se o cliente tiver mais de um;
                           sem isto me mostra as opções e eu escolho)
+Tempo manual: <minutos por item>   (opcional — informado pelo cliente)
+Custo/hora:   <R$ por hora>        (opcional — informado pelo cliente)
 
 Os três meses dos comandos são os do cabeçalho, nunca os do exemplo. Se
 algo no meu texto contradisser o cabeçalho, o CABEÇALHO VENCE — aplica e
@@ -41,9 +58,9 @@ NÃO te passo caminho de nada: nem do projeto, nem da planilha, nem do
 Obsidian. Mudam de máquina para máquina e os scripts acham sozinhos.
 
 O vault do Obsidian é fonte OBRIGATÓRIA deste ATE, não é atalho nem
-conveniência: os textos dos slides 2 e 3 só existem lá. Abrir o vault e
-ler o dossiê do cliente é passo do processo — se esse passo não
-aconteceu, o ATE não está pronto, por mais completo que ele pareça.
+conveniência: o escopo e as automações do segmento só existem lá. Abrir
+o vault é passo do processo — se esse passo não aconteceu, o ATE não está
+pronto, por mais completo que ele pareça.
 
 Acha a pasta que tem montar.py e gerar.py e trabalha nela. Antes de rodar
 qualquer coisa, ATUALIZA o repositório — máquina com código velho quebra na
@@ -65,13 +82,14 @@ Não achou a pasta em lugar nenhum? Clona:
 
     git clone https://github.com/lluisaps/geracao-pptx.git
 
-Clone novo NÃO traz o .env nem a planilha — os dois são locais e ficam
-fora do repositório de propósito. Nesse caso: copia o .env.exemplo para
-.env e me pede as credenciais, e me pede a planilha para pôr na raiz.
-Para e avisa; não inventa dado nem tenta descobrir tabela pelo banco.
+Clone novo NÃO traz o .env, a planilha, o status-local.json nem o
+valor-local.json — são locais e ficam fora do repositório de propósito.
+Nesse caso: copia o .env.exemplo para .env e me pede as credenciais, e me
+pede a planilha para pôr na raiz. Para e avisa; não inventa dado nem tenta
+descobrir tabela pelo banco.
 
-A capa vai SEM LOGO. Não pergunta por logo, não procura, não espera
-anexo — o gerador já resolve. É o padrão do ATE.
+A capa não tem logo de cliente. Não pergunta por logo, não procura, não
+espera anexo — o template já traz só o logo da Yank.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -80,25 +98,59 @@ O COMANDO
 
     python montar.py "<cliente>" <1º mês AAAA-MM> <3º mês AAAA-MM>
 
-Isso sozinho acha a planilha, resolve a tabela do robô, acha o dossiê no
-Obsidian, consulta o banco e o GLPI e escreve o params.json.
+Isso sozinho acha a planilha, resolve a tabela do robô, acha o escopo no
+Obsidian, consulta o banco e o GLPI, procura as automações do segmento no
+vault e escreve o params.json.
 
 Se o cliente tiver mais de um robô, ele lista e para. Me mostra a lista e
 espera eu escolher — um ATE é de UM ROBÔ SÓ, não chuta e não soma robôs
 diferentes. Depois roda de novo com --robo <código>, ou --robo <número da
-linha> quando o mesmo código aparecer em mais de uma linha.
+linha> quando o mesmo código aparecer em mais de uma linha. Se eu disser
+que são os fluxos do mesmo robô, junta as linhas com --robo <linha>,<linha>.
 
 Se ele falhar em algum ponto, me diz onde falhou antes de contornar. O
-contorno é rodar os dois na mão e montar o params.json você:
+contorno é rodar na mão e montar o params.json você:
 
     python execucoes.py <tabela> <1º mês> <3º mês>
-    python glpi_sla.py "<cliente>" <1º mês> <3º mês> --tudo
+    python glpi_sla.py "<cliente>" <1º mês> <3º mês> --tudo --robo <código>
 
 O --tudo não é opcional. Sem ele o glpi_sla.py devolve o indicador
 canônico do Dashboard Sustain, que descarta a árvore Monitoramento, os
 tickets "[Projeto] -" e a entidade interna. Está certo para o indicador e
-errado para o ATE: o slide 5 diz "Total de Chamados", que é volume, e
+errado para o ATE: o gráfico mostra o total de chamados, que é volume, e
 volume não se filtra. Já saiu ATE com mês zerado havendo chamado no GLPI.
+
+
+════════════════════════════════════════════════════════════════════
+VALOR GERADO — de onde sai cada cartão do slide 2
+════════════════════════════════════════════════════════════════════
+
+ITENS PROCESSADOS
+    Total de execuções do trimestre, do banco. Automático.
+
+HORAS POUPADAS = itens entregues × tempo manual por item
+ECONOMIA       = horas poupadas × custo/hora
+    "Itens entregues" são os status de SUCESSO (não as exceções de
+    negócio). O tempo manual e o custo/hora são do CLIENTE: vêm do
+    cabeçalho acima e moram no valor-local.json, por robô. Sem eles o
+    cartão sai "a confirmar" — NUNCA inventa um tempo padrão nem copia o
+    de outro robô. Número de valor inventado é pior que cartão vazio.
+
+DISPONIBILIDADE
+    Estimada pelo GLPI: tempo dos chamados de SUSTENTAÇÃO (Correção,
+    Análise) do robô e do ambiente do cliente, sobre as horas corridas do
+    trimestre. Os chamados de Monitoramento NÃO contam — são checagem de
+    rotina e quase todos fecham em minutos. O percentual é arredondado
+    para baixo (99,99 sai 99,9%). Se houver número melhor (healthcheck),
+    eu passo e ele entra no lugar, com a fonte escrita no cartão.
+
+O QUE FOI ENTREGUE
+    Um item por status de sucesso, com a quantidade. A frase de negócio de
+    cada status mora no valor-local.json ("DOCUMENTO INSERIDO COM SUCESSO"
+    vira "documentos inseridos no <sistema>"). Robô sem frases no arquivo
+    sai com o texto cru do status e REVISAR: me propõe as frases, a partir
+    do status e da nota do robô no Obsidian, e grava no valor-local.json
+    depois que eu aprovar. Não pode entrar na frase o que o status não diz.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -113,110 +165,84 @@ Tudo isto de uma vez, que é o que eu confiro:
   - os chamados do GLPI mês a mês e a linha de exclusões — número alto
     ali significa que o ATE e o dashboard vão contar histórias
     diferentes desse cliente, e eu quero saber antes da reunião;
-  - os dois textos do dossiê do Obsidian, cada um com o arquivo .md e a
-    seção de onde saiu — se não vier a origem, eu assumo que o texto foi
-    escrito de cabeça e devolvo o ATE.
+  - a entidade do GLPI que o script usou (o nome da planilha não é o
+    nome do GLPI) e os chamados que entraram na disponibilidade;
+  - os quatro cartões do slide 2 e a lista de entregas;
+  - o escopo, com o arquivo .md e a seção de onde saiu — se não vier a
+    origem, eu assumo que o texto foi escrito de cabeça e devolvo o ATE;
+  - as automações do segmento que o script achou no vault.
 
 Mês zerado em qualquer um dos dois gráficos é ALERTA, não resultado:
 confere na fonte antes de me entregar.
 
 
 ════════════════════════════════════════════════════════════════════
-OS TEXTOS DOS SLIDES 2 E 3 SAEM DO OBSIDIAN — SEMPRE
+O ESCOPO SAI DO OBSIDIAN — SEMPRE
 ════════════════════════════════════════════════════════════════════
 
-As duas primeiras linhas de texto do params.json — `resumo_escopo` e
-`escopo_objetivo` — vêm do DOSSIÊ DO CLIENTE no meu vault do Obsidian, e
-de lugar nenhum além dele. Quem acha é o montar.py; ele procura o vault
-sozinho e casa o dossiê pelo campo `cliente:` de dentro do arquivo.
+O `escopo` do params.json vem do DOSSIÊ DO CLIENTE no meu vault do
+Obsidian ou, quando o cliente não tem dossiê, da NOTA DO ROBÔ (seção
+"Objetivo"). De lugar nenhum além disso. Quem acha é o montar.py.
 
-Não vale, para preencher esses dois campos:
+Não vale:
 
   - escrever de cabeça a partir do nome do cliente ou do código do robô;
   - deduzir o objetivo pelo que a tabela do banco parece fazer;
   - copiar de um params.json ou de um .pptx de outro ATE;
-  - aproveitar o texto que já está no ATE do trimestre passado sem abrir
-    o dossiê para conferir.
+  - aproveitar o texto do ATE do trimestre passado sem abrir a nota.
 
-Condensar e reescrever PODE — é justamente o que o slide 3 pede. Entrar
-fato que não está no dossiê, NÃO.
+Condensar PODE — a faixa do slide 2 pede: régua de ~200 caracteres, no
+máximo duas linhas no PNG do --conferir. Fica a ação principal + o que ela
+processa + o sistema onde acontece; sai enumeração de etapas, volumetria,
+horário e parâmetro técnico. RESUMIR, não truncar. Entrar fato que não
+está na nota, NÃO. Me mostra o original e o resumido lado a lado.
 
-Me diga sempre, para cada um dos dois: qual arquivo .md e qual seção.
-Sem essa origem eu não aprovo o texto, porque é o único erro do ATE que
-não aparece no PNG do --conferir: texto inventado sai bonito.
+Não achou o vault ou a nota? PARA e me pede o texto.
 
-Não achou o vault, não achou o dossiê, ou achou e ele não tem o objetivo
-do robô que eu pedi? PARA e me pede o texto. Não preenche com texto de
-outro cliente, não escreve de cabeça e não segue com placeholder.
-
-Do dossiê sai só isso — nada de valor de contrato, mensalidade, ROI ou
-contato.
+Do Obsidian sai só isso e o segmento — nada de valor de contrato,
+mensalidade, ROI ou contato.
 
 
 ════════════════════════════════════════════════════════════════════
-O QUE O SCRIPT DEIXA MARCADO COM "REVISAR"
+AUTOMAÇÕES DO SEGMENTO (slide 5, coluna da direita)
 ════════════════════════════════════════════════════════════════════
 
-SLIDE 3 — escopo, CURTO (texto do dossiê, ver a seção acima)
-    O script entrega o texto do dossiê já sem a enumeração de etapas.
-    Falta condensar: no mínimo 4 e no máximo 5 linhas na caixa, régua de
-    ~300 caracteres visíveis (a caixa comporta ~76 por linha; os ** da
-    marcação não contam). Confere no PNG do --conferir, não no olho.
+O script lê as notas de robô do vault, pega as da mesma área (o que vem
+antes do " - " no segmento_projeto) em OUTROS clientes, tira o que este
+cliente já tem e conta em quantos clientes cada assunto roda.
 
-    RESUMIR, não truncar. Pode reescrever condensando, desde que não
-    entre nenhum fato que não esteja no dossiê. Nada de frase cortada no
-    meio.
-
-      fica: a ação principal + o que ela processa + o sistema onde
-            acontece
-      sai:  a enumeração de etapas, volumetria, horário de execução,
-            parâmetros técnicos
-
-    Me mostra o original e o resumido lado a lado.
-
-SLIDE 2 — resumo do robô (texto do dossiê, ver a seção acima)
-    O script propõe uma linha juntando o nome do projeto com a
-    segmentação. Me mostra para eu aprovar ou corrigir.
-
-    Se ele avisar que casou o código pelo número e pelas letras (o
-    código às vezes vem com as letras trocadas entre a planilha e o
-    dossiê), me repassa esse aviso.
-
-ASSERTIVIDADE
-    Eu confirmo depois de ver a quebra por status. Não preenche sozinho e
-    não reaproveita o valor de um params.json de outro ATE.
-
-SLIDES 6 E 7
-    São do trimestre, não do contrato: vão abaixo, na minha mensagem.
-
-ENTIDADE DO GLPI
-    O glpi_sla.py imprime a(s) entidade(s) que usou antes da contagem.
-    Me repassa essa linha: o nome da planilha não é o nome do GLPI, e é
-    ali que dá para ver se ele foi buscar no cliente certo.
+NUNCA entra nome de outro cliente no slide — nem no texto, nem como
+exemplo. O ATE vai para fora. Pode reescrever cada item como oportunidade
+("Cadastro de processos: hoje roda em 3 clientes do segmento"), desde que
+o assunto e a contagem sejam os do script. Tira o que não fizer sentido
+para este cliente e me diz o que tirou.
 
 
 ════════════════════════════════════════════════════════════════════
-SLIDE 6 — dificuldades / lições aprendidas
+SLIDE 4 — melhorias entregues no período
+════════════════════════════════════════════════════════════════════
+
+O que foi entregue no robô
+  - <ajuste, evolução, nova regra no trimestre>
+
+O que fizemos para evitar falhas
+  - <prevenção, monitoramento, reprocessamento, correção de causa>
+
+(O script conta os chamados de Melhoria e de Sustentação do robô no
+trimestre, como pista — os títulos do GLPI não dizem o que foi feito.)
+
+
+════════════════════════════════════════════════════════════════════
+SLIDE 5 — próximas evoluções (coluna da esquerda)
 ════════════════════════════════════════════════════════════════════
 
 <tópico>
-  - <o que aconteceu no trimestre e o que se aprendeu>
-
-Maiores causas de abertura de chamado
-  - <causa>
-  - <causa>
-
-
-════════════════════════════════════════════════════════════════════
-SLIDE 7 — pontos de atenção / melhorias
-════════════════════════════════════════════════════════════════════
-
-<tópico>
-  - <o que vem pela frente>
+  - <o que vem pela frente neste robô>
 
 
 Os números dos tópicos saem automáticos — não escreve 1., 2., 3.
-Use **assim** para destacar: azul no slide 3, negrito nos slides 6 e 7.
+Use **assim** para destacar: azul no escopo, negrito nas entregas e nos
+slides 4 e 5.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -226,7 +252,8 @@ GERAR E CONFERIR
     python gerar.py params.json ATE-<cliente>-<competência>.pptx --conferir
 
   - Os meses dos dois gráficos são os três do cabeçalho?
-  - Quais números saíram nos cartões do slide 5?
+  - Quais números saíram nos cartões dos slides 2 e 3?
+  - Sobrou algum REVISAR no params.json?
   - Algum texto estourou a caixa no PNG do --conferir?
 
 Me devolve o .pptx.
@@ -239,19 +266,22 @@ Me devolve o .pptx.
 | Slide | Conteúdo | Origem |
 |---|---|---|
 | 1 | competência | cabeçalho do pedido |
-| 1 | logo | nenhum — placeholder transparente, sempre |
-| 2 | resumo do robô | **dossiê no Obsidian** (obrigatório), nome do projeto + segmentação |
-| 3 | escopo e objetivo | **dossiê no Obsidian** (obrigatório), objetivo do projeto (ou do robô) |
-| 4 | execuções do trimestre | banco, via `execucoes.py` |
-| 5 | chamados e SLA | GLPI, via `glpi_sla.py --tudo` |
-| 6 | dificuldades / lições | você, na mensagem |
-| 7 | pontos de atenção | você, na mensagem |
+| 2 | escopo | **Obsidian** (obrigatório): dossiê do cliente ou nota do robô |
+| 2 | itens processados | banco, via `execucoes.py` |
+| 2 | horas e economia | status de sucesso do banco × tempo manual e custo/hora do **cliente** (`valor-local.json`) |
+| 2 | disponibilidade | GLPI: chamados de Sustentação do robô (`glpi_sla.py --robo`) |
+| 2 | o que foi entregue | status de sucesso do banco + frases do `valor-local.json` |
+| 3 | execuções e assertividade | banco, via `execucoes.py` e `status.py` |
+| 3 | chamados e SLA | GLPI, via `glpi_sla.py --tudo` |
+| 4 | melhorias entregues | você, na mensagem |
+| 5 | próximas evoluções | você, na mensagem |
+| 5 | oportunidades no segmento | notas de robô do vault, sem nome de cliente |
 
-Os slides 6 e 7 continuam na mensagem porque são **do trimestre**, não do
-contrato: o que quebrou, o que melhorou, o que abriu chamado. O dossiê é o que
-foi vendido, e isso não muda de um ATE para o outro.
+Os slides 4 e 5 continuam na mensagem porque são **do trimestre**: o que
+melhorou, o que se evitou, o que vem. O Obsidian é o que foi vendido, e isso
+não muda de um ATE para o outro.
 
-## As quatro fontes locais
+## As fontes locais
 
 Nenhuma delas está no repositório, e é de propósito.
 
@@ -259,8 +289,10 @@ Nenhuma delas está no repositório, e é de propósito.
 |---|---|---|
 | `.env` | raiz do projeto | credenciais do banco e do GLPI |
 | planilha `.xlsx` | raiz do projeto | tabela do robô no banco e a quebra do gráfico |
-| dossiês | vault do Obsidian | textos dos slides 2 e 3 — **fonte obrigatória, sem alternativa** |
-| GLPI | rede | chamados e SLA do trimestre |
+| `status-local.json` | raiz do projeto | classificação de cada status (sucesso / exceção / falha) |
+| `valor-local.json` | raiz do projeto | tempo manual, custo/hora e frases de entrega, por robô |
+| vault do Obsidian | máquina | escopo e segmento — **fonte obrigatória, sem alternativa** |
+| GLPI | rede | chamados, SLA e disponibilidade do trimestre |
 
 O `.env` é por máquina — copie o `.env.exemplo` e preencha. Os acessos são
 **somente leitura**: nenhum script escreve no banco nem no GLPI.

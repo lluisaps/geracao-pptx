@@ -7,6 +7,8 @@
 
     --robo <código|texto>   escolhe o robô quando o cliente tem mais de um;
                             sem isto o script lista as opções e para
+    --robo 24,25            junta as linhas 24 e 25 num ATE só (o mesmo robô
+                            em dois fluxos, por exemplo)
     --competencia <Mmm/AA>  padrão: o último mês do trimestre
     --planilha <caminho>    padrão: a única .xlsx ao lado deste script
     --vault <caminho>       padrão: o vault que o Obsidian registrou
@@ -23,20 +25,27 @@ o código de uma máquina para outra.
 O que o script resolve sozinho:
 
     planilha  ->  tabela(s) do robô, se as linhas somam, se há quebra
-    dossiê    ->  resumo do robô (slide 2) e objetivo (slide 3)
-    banco     ->  grafico_execucoes, via execucoes.py
-    GLPI      ->  grafico_sla e os três cartões, via glpi_sla.py --tudo
+    dossiê    ->  escopo do robô (faixa do slide 2)
+    banco     ->  grafico_execucoes, assertividade e as entregas do
+                  trimestre (status de sucesso), via execucoes.py
+    GLPI      ->  grafico_sla, via glpi_sla.py --tudo, e a disponibilidade
+                  estimada pelos chamados de Sustentação do robô
+    vault     ->  automações do mesmo segmento em OUTROS clientes, sem nome
+                  de cliente (slide 5, coluna da direita)
+    valor-local.json -> tempo manual por item, custo/hora e a frase de cada
+                  status de entrega, por robô (fora do git: é dado de cliente)
 
 O que ele NÃO resolve, e marca com REVISAR no params.json:
 
-    escopo_objetivo   o corte para ~300 caracteres é resumo, não truncagem;
-                      o script entrega o texto do dossiê já sem a enumeração
-                      de etapas, mas quem condensa é gente
-    resumo_escopo     a linha do slide 2 junta duas seções do dossiê; o
-                      script propõe uma, você confirma
-    assertividade     depende de olhar a quebra por status
-    dificuldades      são do trimestre, não do contrato: não saem de fonte
-    pontos_de_atencao nenhuma
+    escopo              o corte para ~200 caracteres é resumo, não
+                        truncagem; quem condensa é gente
+    valor_gerado        sem o valor-local.json do robô, as entregas saem com
+                        o texto cru do status e horas/economia ficam "a
+                        confirmar" no slide
+    melhorias           são do trimestre: o script só conta os chamados de
+                        Melhoria e de Sustentação do robô, como pista
+    proximas_evolucoes  a coluna da esquerda é do robô e não sai de fonte; a
+                        da direita sai do vault e precisa virar oportunidade
 
 Nada de valor de contrato, mensalidade, ROI ou contato sai do dossiê.
 """
@@ -323,6 +332,24 @@ def escolher_robo(robos, pedido):
     Aceita o código, o número da linha, ou código + descrição ("<código> <parte
     da descrição>") para quando o mesmo código aparece em mais de uma linha.
     """
+    if pedido and "," in pedido:
+        # Juntar linhas é decisão de quem pede ("os dois fluxos do ABC01"),
+        # nunca do script: só acontece com a lista explícita.
+        partes = [escolher_robo(robos, p) for p in pedido.split(",") if p.strip()]
+        junto = dict(partes[0])
+        junto["tabelas"] = [t for r in partes for t in r["tabelas"]]
+        junto["linhas"] = [n for r in partes for n in r["linhas"]]
+        junto["descricao"] = " + ".join(r["descricao"] for r in partes if r["descricao"])
+        junto["somavel"] = True
+        quebras = {r["quebra"] for r in partes}
+        junto["quebra"] = partes[0]["quebra"] if len(quebras) == 1 else None
+        codigos = {r["codigo"] for r in partes}
+        if len(codigos) > 1:
+            print("ATENÇÃO: juntando robôs de códigos diferentes (%s); a "
+                  "disponibilidade e o valor usam só o %s."
+                  % (", ".join(sorted(codigos)), partes[0]["codigo"]))
+        return junto
+
     if not pedido:
         if len(robos) == 1:
             return robos[0]
@@ -626,14 +653,20 @@ def textos_do_dossie(dossie, robo):
 
 # ------------------------------------------------------------------- dados
 def dados_execucoes(tabelas, ini, fim, quebra, robo=None):
-    """grafico_execucoes, reaproveitando o execucoes.py."""
+    """(grafico_execucoes, assertividade, {status: total}, {status: balde})."""
     import execucoes
+    import status as status_mod
     linhas = execucoes.consultar(tabelas, ini, fim)
     print("linhas retornadas: %d\n" % len(linhas))
     buckets = execucoes.apurar(linhas, ini, fim)
     totais, pct = execucoes.relatorio(buckets, robo)
+    soma = OrderedDict()
+    for b in buckets.values():
+        for st, n in b.items():
+            soma[st] = soma.get(st, 0) + n
+    baldes = status_mod.apurar(soma, robo)[2]
     if not quebra:
-        return execucoes.bloco_params(buckets, totais, pct), pct
+        return execucoes.bloco_params(buckets, totais, pct), pct, soma, baldes
     print()
     q = execucoes.apurar_quebra(
         execucoes.consultar_quebra(tabelas, ini, fim, quebra), ini, fim)
@@ -642,13 +675,72 @@ def dados_execucoes(tabelas, ini, fim, quebra, robo=None):
     if soma != sum(totais):
         print("\nATENÇÃO: a quebra soma %d e os status somam %d — não bate."
               % (soma, sum(totais)))
-    return execucoes.bloco_params_quebra(q, categorias, pct), pct
+    return execucoes.bloco_params_quebra(q, categorias, pct), pct, soma, baldes
 
 
-def dados_sla(cliente, ini, fim):
-    """grafico_sla, sempre com --tudo: o slide 5 é volume, e volume não se
-    filtra. A linha de exclusões sai junto, para o ATE e o Dashboard Sustain
-    não contarem histórias diferentes sem ninguém perceber."""
+VALOR_LOCAL = os.path.join(RAIZ, "valor-local.json")
+
+
+def config_valor(codigo):
+    """O bloco do robô no valor-local.json, ou {}.
+
+    O arquivo fica fora do git (a chave é o código do robô e os números são
+    do cliente). Formato:
+
+        {"ABC01": {"minutos_por_item": 4, "custo_hora": 55,
+                   "entregas": {"<status de sucesso>": "<frase do slide>"}}}
+    """
+    if not os.path.exists(VALOR_LOCAL):
+        return {}
+    dados = json.load(io.open(VALOR_LOCAL, encoding="utf-8"))
+    for k, v in dados.items():
+        if not k.startswith("_") and codigo and mesmo_codigo(k, codigo):
+            return v
+    return {}
+
+
+def milhar(n):
+    return "{:,}".format(int(n)).replace(",", ".")
+
+
+def valor_gerado(soma, baldes, cfg):
+    """itens entregues e a lista de entregas, a partir dos status de sucesso.
+
+    Com "entregas" no valor-local.json, contam só os status mapeados, cada um
+    com a frase de negócio dele. Sem isso, entra todo status de sucesso com o
+    texto cru e um REVISAR — status de sistema não é frase de diretoria.
+    """
+    import status as status_mod
+    frases = cfg.get("entregas") or {}
+    alvo = {normalizar(k): v for k, v in frases.items()}
+    entregas, itens = [], 0
+    for st, n in sorted(soma.items(), key=lambda x: -x[1]):
+        if baldes.get(st) != status_mod.SUCESSO or not n:
+            continue
+        if alvo:
+            frase = alvo.get(normalizar(st))
+            if frase is None:
+                continue
+            entregas.append("**%s** %s" % (milhar(n), frase))
+        else:
+            entregas.append("%s**%s** %s" % (REVISAR, milhar(n), st.lower()))
+        itens += n
+    if alvo and not entregas:
+        print("ATENÇÃO: nenhum status do valor-local.json apareceu no período.")
+    return OrderedDict([
+        ("itens_entregues", itens),
+        ("minutos_por_item", cfg.get("minutos_por_item")),
+        ("custo_hora", cfg.get("custo_hora")),
+        ("entregas", entregas),
+    ])
+
+
+def dados_glpi(cliente, ini, fim, codigos):
+    """(grafico_sla, disponibilidade, pistas de melhoria) numa sessão só.
+
+    O SLA sai sempre com --tudo: o gráfico é volume, e volume não se filtra.
+    A linha de exclusões sai junto, para o ATE e o Dashboard Sustain não
+    contarem histórias diferentes sem ninguém perceber."""
     import glpi_sla
     sess = glpi_sla.abrir_sessao()
     try:
@@ -659,13 +751,106 @@ def dados_sla(cliente, ini, fim):
             glpi_sla.contar_exclusoes(chamados, buckets), True)
         print()
         glpi_sla.relatorio(buckets)
-        return glpi_sla.bloco_params(buckets)
+        disp, pistas = None, None
+        if codigos:
+            print()
+            d = glpi_sla.disponibilidade(chamados, ini, fim, codigos)
+            glpi_sla.relatorio_disponibilidade(d, codigos)
+            disp = OrderedDict((k, v) for k, v in d.items()
+                               if not k.startswith("_"))
+            if d["percentual"] is not None:
+                disp["percentual"] = round(d["percentual"], 3)
+            pistas = pistas_de_melhoria(glpi_sla, chamados, buckets, codigos)
+        return glpi_sla.bloco_params(buckets), disp, pistas
     finally:
         try:
             glpi_sla._req(glpi_sla.BASE + "/killSession",
                           {"App-Token": glpi_sla.APP, "Session-Token": sess})
         except Exception:                              # noqa: BLE001
             pass
+
+
+def pistas_de_melhoria(glpi_sla, chamados, buckets, codigos):
+    """Quantos chamados de Melhoria e de Sustentação o robô teve no período.
+
+    Os títulos do GLPI repetem a categoria, então não dá para tirar dali O
+    QUE foi feito — o número só lembra quem escreve de onde procurar."""
+    alvo = {c.upper() for c in codigos}
+    cont = OrderedDict([("Melhoria", 0), ("Sustenta", 0)])
+    for t in chamados:
+        if glpi_sla._no_do_chamado(t).upper() not in alvo:
+            continue
+        ab = glpi_sla._dt(t.get(str(glpi_sla.F_ABERTURA)))
+        if not ab or (ab.year, ab.month) not in buckets:
+            continue
+        cat = t.get(str(glpi_sla.F_CATEG)) or ""
+        for k in cont:
+            if k in cat:
+                cont[k] += 1
+    return cont
+
+
+# ------------------------------------------------------------------- vault
+def notas_de_robo(raizes):
+    """Todo .md do vault com 'tipo: robo' no frontmatter."""
+    notas = []
+    for raiz in raizes:
+        for pasta, _, arquivos in os.walk(raiz):
+            if os.path.basename(pasta).startswith("."):
+                continue
+            for nome in arquivos:
+                if not nome.lower().endswith(".md"):
+                    continue
+                try:
+                    texto = io.open(os.path.join(pasta, nome),
+                                    encoding="utf-8").read()
+                except (OSError, UnicodeDecodeError):
+                    continue
+                fm = frontmatter(texto)
+                if fm.get("tipo") == "robo" and fm.get("segmento_projeto"):
+                    fm["_texto"] = texto
+                    notas.append(fm)
+    return notas
+
+
+def chave_cliente(nome):
+    """Primeira palavra do nome: "Fulano (cliente final X)" e "Fulano" são o
+    mesmo cliente para efeito de 'não mostrar o que ele já tem'."""
+    p = normalizar(nome).split()
+    return p[0] if p else ""
+
+
+def automacoes_do_segmento(notas, cliente, codigo, limite=6):
+    """Automações da mesma área (o que vem antes do " - " no
+    segmento_projeto) em OUTROS clientes, que este cliente ainda não tem.
+
+    Sai só o assunto e em quantos clientes roda — nunca o nome do cliente:
+    o slide vai para fora e a carteira dos outros não é assunto dele."""
+    proprio = [n for n in notas if codigo and n.get("codigo")
+               and mesmo_codigo(n["codigo"], codigo)]
+    if not proprio:
+        return None, "nenhuma nota de robô com código %r no vault" % codigo
+    area = proprio[0]["segmento_projeto"].split(" - ")[0].strip()
+    meu = chave_cliente(cliente)
+    ja_tem = {normalizar(n["segmento_projeto"]) for n in notas
+              if chave_cliente(n.get("cliente", "")) == meu}
+    por_assunto = OrderedDict()
+    for n in notas:
+        seg = n["segmento_projeto"]
+        if seg.split(" - ")[0].strip() != area or " - " not in seg:
+            continue
+        outro = chave_cliente(n.get("cliente", ""))
+        if not outro or outro == meu or "confirmar" in normalizar(n.get("cliente", "")):
+            continue
+        if normalizar(seg) in ja_tem:
+            continue
+        assunto = seg.split(" - ", 1)[1].strip()
+        por_assunto.setdefault(assunto, set()).add(outro)
+    ranking = sorted(por_assunto.items(), key=lambda x: (-len(x[1]), x[0]))
+    itens = ["**%s** — em operação em %d cliente%s do segmento"
+             % (a[:1].upper() + a[1:], len(c), "s" if len(c) > 1 else "")
+             for a, c in ranking[:limite]]
+    return itens, "área %r, %d assunto(s) em outros clientes" % (area, len(ranking))
 
 
 # ---------------------------------------------------------------- programa
@@ -738,71 +923,100 @@ def main():
                   % cliente)
     else:
         resumo, objetivo, origem = textos_do_dossie(dossie, robo)
+    notas = notas_de_robo(achar_vault(vault))
+    if not objetivo and robo["codigo"]:
+        # Sem dossiê do cliente, o objetivo sai da nota do próprio robô.
+        nota = next((n for n in notas if n.get("codigo")
+                     and mesmo_codigo(n["codigo"], robo["codigo"])), None)
+        if nota:
+            objetivo = limpar(secao(nota["_texto"], 3, "Objetivo"))
+            origem += "\n         escopo pela nota do robô %s" % nota["codigo"]
     print("origem:  %s" % origem)
     if objetivo:
         curto = encurtar_objetivo(objetivo)
         print()
-        print("--- slide 3, original (%d caracteres) ---" % len(objetivo))
+        print("--- escopo, original (%d caracteres) ---" % len(objetivo))
         print(objetivo)
         print()
-        print("--- slide 3, sem a enumeração de etapas (%d caracteres) ---"
+        print("--- escopo, sem a enumeração de etapas (%d caracteres) ---"
               % len(curto))
         print(curto)
-        print("    a régua são ~300 caracteres visíveis. %s"
-              % ("cabe." if len(curto) <= 300 else
+        print("    a régua são ~200 caracteres, numa faixa do slide 2. %s"
+              % ("cabe." if len(curto) <= 200 else
                  "AINDA PRECISA CONDENSAR — resumir, não truncar."))
-        print()
-        print("--- slide 2, proposta ---")
-        print(resumo)
     else:
         curto = None
 
     bloco_exec, pct, bloco_sla = None, None, None
+    soma, baldes, disp, pistas = {}, {}, None, None
+    codigos = [robo["codigo"]] if robo["codigo"] else []
     if not sem_banco:
         print()
         print("=" * 68)
         print("EXECUÇÕES (banco)")
         print("=" * 68)
-        bloco_exec, pct = dados_execucoes(robo["tabelas"], ini, fim,
-                                          robo["quebra"],
-                                          etiqueta_do_robo(robo))
+        bloco_exec, pct, soma, baldes = dados_execucoes(
+            robo["tabelas"], ini, fim, robo["quebra"], etiqueta_do_robo(robo))
         print()
         print("=" * 68)
         print("CHAMADOS (GLPI, com --tudo)")
         print("=" * 68)
-        bloco_sla = dados_sla(cliente, ini, fim)
+        bloco_sla, disp, pistas = dados_glpi(cliente, ini, fim, codigos)
+
+    print()
+    print("=" * 68)
+    print("SEGMENTO (vault)")
+    print("=" * 68)
+    segmento, origem_seg = automacoes_do_segmento(notas, cliente, robo["codigo"])
+    print("origem:  %s" % origem_seg)
+    for item in segmento or []:
+        print("  - %s" % item.replace("**", ""))
 
     params = OrderedDict()
     params["cliente"] = cliente
     params["competencia"] = competencia
-    params["resumo_escopo"] = resumo or (REVISAR + "resumo do robô, do dossiê")
-    params["escopo_objetivo"] = ((REVISAR + "condensar para ~300 caracteres. ")
-                                 + curto if curto else
-                                 REVISAR + "objetivo do robô, do dossiê")
+    params["escopo"] = ((REVISAR + "condensar para ~200 caracteres. ") + curto
+                        if curto else REVISAR + "objetivo do robô, do dossiê")
     params["grafico_execucoes"] = bloco_exec or OrderedDict([
         ("titulo", "Execuções - %s" % ", ".join(meses)),
-        ("assertividade", REVISAR + "confirmar depois de ver os status"),
         ("meses", meses),
         ("execucoes", [0] * len(meses)),
     ])
-    if bloco_exec is not None:
-        import execucoes
-        calculado = ("%s%%" % execucoes.pct_texto(pct)) if pct is not None \
-            else "nada (nenhum status com 'sucesso')"
-        params["grafico_execucoes"]["assertividade"] = (
-            REVISAR + "calculado %s — confirmar contra a quebra por status"
-            % calculado)
+    # número, não frase: o gerar.py formata o cartão (com piso, 99,96 -> 99,9)
+    params["grafico_execucoes"]["assertividade"] = (
+        round(pct, 2) if pct is not None else None)
     params["grafico_sla"] = bloco_sla or OrderedDict([
         ("meses", meses),
         ("chamados", [0] * len(meses)),
         ("dentro_do_sla", [0] * len(meses)),
     ])
-    params["dificuldades"] = [
-        OrderedDict([("topico", REVISAR + "o que aconteceu no trimestre"),
-                     ("itens", [REVISAR + "escreva na mensagem do pedido"])])]
-    params["pontos_de_atencao"] = [
-        OrderedDict([("topico", REVISAR + "o que vem pela frente"),
-                     ("itens", [REVISAR + "escreva na mensagem do pedido"])])]
+
+    cfg_valor = config_valor(robo["codigo"])
+    params["valor_gerado"] = valor_gerado(soma, baldes, cfg_valor)
+    if not cfg_valor:
+        print("\nsem bloco de %r no valor-local.json: entregas com o texto "
+              "do status e horas/economia 'a confirmar'." % robo["codigo"])
+    params["disponibilidade"] = disp
+
+    pista = ("o GLPI tem %d chamado(s) de Melhoria e %d de Sustentação deste "
+             "robô no trimestre" % (pistas["Melhoria"], pistas["Sustenta"])
+             if pistas else "confira os chamados de Melhoria do robô no GLPI")
+    params["melhorias"] = OrderedDict([
+        ("esquerda", [OrderedDict([
+            ("topico", REVISAR + "o que foi entregue no robô"),
+            ("itens", [REVISAR + pista])])]),
+        ("direita", [OrderedDict([
+            ("topico", REVISAR + "o que fizemos para evitar falhas"),
+            ("itens", [REVISAR + "ajustes, prevenções, reprocessamentos"])])]),
+    ])
+    params["proximas_evolucoes"] = OrderedDict([
+        ("esquerda", [OrderedDict([
+            ("topico", REVISAR + "próximas evoluções do robô"),
+            ("itens", [REVISAR + "escreva na mensagem do pedido"])])]),
+        ("direita", [OrderedDict([
+            ("topico", REVISAR + "Oportunidades no segmento"),
+            ("itens", segmento or [REVISAR + origem_seg])])]),
+    ])
 
     with io.open(saida, "w", encoding="utf-8") as f:
         json.dump(params, f, ensure_ascii=False, indent=2)
@@ -814,7 +1028,8 @@ def main():
     print("=" * 68)
     print("escrito: %s" % saida)
     if sem_banco:
-        print("(--sem-banco: os dois gráficos saíram zerados de propósito)")
+        print("(--sem-banco: gráficos zerados, sem entregas nem "
+              "disponibilidade, de propósito)")
     print("ainda com REVISAR: %s" % (", ".join(pendentes) or "nada"))
     print()
     print("depois de revisar:")

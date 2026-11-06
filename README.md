@@ -9,6 +9,17 @@ gráficos de verdade, tudo editável no PowerPoint.
 O layout, as fontes, as cores e a decoração vêm intactos do `template.pptx` —
 o gerador só troca conteúdo.
 
+O ATE mostra **valor de negócio**, não só operação. São seis slides:
+
+| # | Slide | O que mostra |
+|---|---|---|
+| 1 | Capa | competência |
+| 2 | Resumo Executivo — Valor Gerado | escopo, quatro cartões (itens processados, horas poupadas, economia, disponibilidade) e o que foi entregue |
+| 3 | Indicadores de Operação | execuções e SLA lado a lado; cartões de assertividade, SLA e disponibilidade |
+| 4 | Melhorias Entregues no Período | o que foi entregue no robô e o que se fez para evitar falhas |
+| 5 | Próximas Evoluções e Oportunidades | o que vem para o robô e automações do mesmo segmento em outros clientes |
+| 6 | Encerramento | fixo |
+
 ## Requisitos
 
 - Python 3
@@ -28,7 +39,7 @@ Para conferir visualmente antes de entregar:
 python gerar.py params.json ATE-<cliente>-<competencia>.pptx --conferir
 ```
 
-O `--conferir` exporta os 8 slides em imagem. Ele se vira com o que existir no
+O `--conferir` exporta os 6 slides em imagem. Ele se vira com o que existir no
 ambiente: **PowerPoint** (Windows, via `pywin32`) ou **LibreOffice** (qualquer
 sistema, via `soffice`). Se não achar nenhum dos dois, avisa e segue — o
 `.pptx` sai igual, só sem a conferência automática. Nada disso é necessário
@@ -52,15 +63,18 @@ textos mudam de largura.
 python montar.py "<cliente>" 2026-04 2026-06
 ```
 
-Ele resolve sozinho a tabela do robô (na planilha), os textos dos slides 2 e 3
-(no dossiê do Obsidian), as execuções (no banco) e os chamados (no GLPI, sempre
-com `--tudo`), e escreve o `params.json`. O que depende de julgamento fica
-marcado com `REVISAR:` dentro do arquivo — condensar o escopo do slide 3,
-confirmar a assertividade e escrever os slides 6 e 7.
+Ele resolve sozinho a tabela do robô (na planilha), o escopo (no dossiê do
+Obsidian ou, sem dossiê, na nota do robô), as execuções, a assertividade e as
+entregas (no banco), os chamados e a disponibilidade (no GLPI, sempre com
+`--tudo`) e as automações do mesmo segmento (nas notas de robô do vault), e
+escreve o `params.json`. O que depende de julgamento fica marcado com
+`REVISAR:` dentro do arquivo — condensar o escopo, dar frase de negócio às
+entregas e escrever os slides 4 e 5.
 
 Cliente com mais de um robô faz o script listar as opções e parar: um ATE é de
 um robô só. Use `--robo <código>` ou, quando o mesmo código aparecer em mais de
-uma linha, `--robo <número da linha>`. `--sem-banco` monta só a parte de
+uma linha, `--robo <número da linha>`. Dois fluxos do mesmo robô em linhas
+separadas entram juntos com `--robo <linha>,<linha>`. `--sem-banco` monta só a parte de
 planilha e dossiê, para conferir os textos antes de gastar consulta.
 
 **Nada de caminho fixo.** O projeto é onde o `montar.py` está; a planilha é a
@@ -74,11 +88,11 @@ valores. O [PROMPT.md](PROMPT.md) tem o texto pronto para pedir um ATE a uma IA.
 
 ## Nada de dado de cliente no repositório
 
-`Tabelas Artemis.xlsx` e `params.json` são **locais** e estão no
-`.gitignore`, junto com o `.env`. Eles carregam nome de cliente, tabela do
-banco e volume de execução — nada disso entra em commit. Os dossiês, que trazem
-os textos dos slides 2 e 3, ficam no vault do Obsidian e também não são
-copiados para cá.
+`Tabelas Artemis.xlsx`, `params.json`, `status-local.json` e
+`valor-local.json` são **locais** e estão no `.gitignore`, junto com o `.env`.
+Eles carregam nome de cliente, código de robô, tabela do banco, volume de
+execução, tempo manual e custo/hora — nada disso entra em commit. O Obsidian,
+de onde saem o escopo e o segmento, também não é copiado para cá.
 
 O que fica versionado é só o mecanismo: os scripts, o template e a
 documentação. O `params.exemplo.json` é fictício de
@@ -91,18 +105,86 @@ versionado.
 | Campo | Slide | O que muda |
 |---|---|---|
 | `competencia` | 1 | data em azul, abaixo do título da capa |
-| `resumo_escopo` | 2 | descrição do item 1 da agenda |
-| `escopo_objetivo` | 3 | texto do escopo; `**termo**` sai em azul e negrito |
-| `grafico_execucoes.titulo` | 4 | título acima do gráfico |
-| `grafico_execucoes.assertividade` | 4 | nota abaixo do gráfico; vazia, a nota some |
-| `grafico_execucoes.meses` / `execucoes` | 4 | uma barra por mês, com o total do mês |
-| `grafico_execucoes.categorias` / `series` | 4 | alternativa: gráfico quebrado, uma série por mês |
-| `grafico_sla.meses` / `chamados` / `dentro_do_sla` | 5 | dados do gráfico |
-| `dificuldades` | 6 | tópicos das duas colunas |
-| `pontos_de_atencao` | 7 | tópicos das duas colunas |
+| `escopo` | 2 | faixa do escopo; `**termo**` sai em azul e negrito |
+| `valor_gerado.itens_entregues` | 2 | base das horas poupadas (status de sucesso) |
+| `valor_gerado.minutos_por_item` | 2 | tempo manual médio por item, do cliente; `null` = "a confirmar" |
+| `valor_gerado.custo_hora` | 2 | R$ por hora da equipe, do cliente; `null` = "a confirmar" |
+| `valor_gerado.entregas` | 2 | lista "O que foi entregue no trimestre" |
+| `disponibilidade.percentual` | 2 e 3 | cartão de disponibilidade; `null` = "a confirmar" |
+| `disponibilidade.horas_indisponivel` | 3 | detalhe do cartão ("0,2 h de parada no trimestre") |
+| `disponibilidade.fonte` | 2 e 3 | opcional: quando o número vem de outra fonte, ela vai escrita no cartão |
+| `grafico_execucoes.titulo` | 3 | título acima do gráfico |
+| `grafico_execucoes.assertividade` | 3 | número (99.35) ou texto pronto; vira o cartão de assertividade |
+| `grafico_execucoes.meses` / `execucoes` | 2 e 3 | uma barra por mês; a soma é o cartão de itens processados |
+| `grafico_execucoes.categorias` / `series` | 2 e 3 | alternativa: gráfico quebrado, uma série por mês |
+| `grafico_sla.meses` / `chamados` / `dentro_do_sla` | 3 | dados do gráfico e do cartão de SLA |
+| `melhorias` | 4 | tópicos das duas colunas |
+| `proximas_evolucoes` | 5 | tópicos das duas colunas (direita: oportunidades no segmento) |
 
-Os textos aceitam `**assim**` para destacar: azul no slide 3, negrito nos
-slides 6 e 7.
+Os textos aceitam `**assim**` para destacar: azul no escopo, negrito nas
+entregas e nos slides 4 e 5.
+
+## Valor gerado
+
+As horas e a economia são **estimativa**, e o slide diz isso na nota de rodapé:
+
+```
+horas poupadas = itens entregues × minutos por item ÷ 60
+dias úteis     = horas ÷ 8
+economia       = horas × custo/hora
+```
+
+"Itens entregues" são os status classificados como **sucesso** pelo
+`status.py` — exceção de negócio não entra, porque não foi trabalho poupado.
+O tempo manual e o custo/hora são **do cliente** e ficam no
+`valor-local.json`, por robô. Sem eles os cartões saem "a confirmar": o
+gerador não tem tempo padrão e não deve ter.
+
+```json
+{
+  "<código do robô>": {
+    "minutos_por_item": 4,
+    "custo_hora": 55,
+    "entregas": {
+      "<STATUS DE SUCESSO>": "<frase de negócio que vai no slide>"
+    }
+  }
+}
+```
+
+Com `entregas` preenchido, contam como itens só os status listados, cada um
+com a sua frase. Sem isso, entra todo status de sucesso com o texto cru e
+`REVISAR:` — status de sistema não é frase de diretoria.
+
+## Disponibilidade
+
+Não existe registro de "robô fora do ar" que dê para usar: as tabelas de
+monitoramento do banco pararam em 2022, e o intervalo entre execuções não
+serve, porque os robôs rodam por demanda — dia sem execução é dia sem demanda.
+
+A estimativa sai do GLPI (`glpi_sla.py --robo <código>`):
+
+- contam os chamados de **Sustentação** (Correção, Análise), da abertura à
+  solução, abertos no nó do robô ou no ambiente compartilhado do cliente;
+- **Monitoramento não conta**: é checagem de rotina, e quase todos fecham em
+  minutos;
+- chamados de outros robôs do mesmo cliente ficam de fora;
+- faixas sobrepostas se juntam, e a base são as horas corridas do trimestre
+  (24x7).
+
+O percentual sai **arredondado para baixo** (99,99 vira 99,9%): só aparece
+100% quando não houve nenhuma parada. É uma estimativa conservadora — o
+chamado conta inteiro, mesmo que o robô tenha voltado antes do registro da
+solução. Quem tiver número melhor (healthcheck) põe em
+`disponibilidade.percentual` com `disponibilidade.fonte`.
+
+## Oportunidades no segmento
+
+O `montar.py` lê as notas de robô do vault (`tipo: robo`), pega as da mesma
+área — o que vem antes do ` - ` no `segmento_projeto` — em **outros**
+clientes, tira os assuntos que este cliente já tem e conta em quantos clientes
+cada um roda. Sai só o assunto e a contagem: **nome de outro cliente nunca vai
+para o slide**.
 
 ## De onde vem a tabela do robô
 
@@ -134,7 +216,7 @@ gerente numera a carteira do seu jeito.
 
 O normal é passar só o cliente. Quando ele tem mais de um robô, o `montar.py`
 lista as opções e para — ele não escolhe sozinho de propósito: o escopo do
-slide 3 descreve um robô específico, e somar dois daria um gráfico que não
+slide 2 descreve um robô específico, e somar dois daria um gráfico que não
 corresponde a texto nenhum. Aí você repete com `--robo <código>`, ou
 `--robo <número da linha>` quando o mesmo código aparecer em mais de uma linha.
 
@@ -190,25 +272,23 @@ denominador não é o total: chamados ainda abertos ficam de fora.
 
 Mês sem nenhum chamado sai como `—`, não como `0%`.
 
-## Os cartões de SLA são calculados
+## O cartão de SLA é calculado
 
-Você **não** informa os números dos três cartões do slide 5. Eles saem dos
-dados do gráfico:
+Você **não** informa o número do cartão de SLA do slide 3. Ele sai dos dados
+do gráfico:
 
 ```
 total   = soma de chamados
 dentro  = soma de dentro_do_sla
-fora    = total - dentro
 %dentro = dentro / total
-%fora   = 100 - %dentro
 ```
 
-Assim os cartões nunca discordam do gráfico. O gerador imprime os valores no
+Assim o cartão nunca discorda do gráfico. O gerador imprime os valores no
 terminal para conferência.
 
 ## Numeração dos tópicos
 
-Os tópicos dos slides 6 e 7 são numerados automaticamente e **a numeração
+Os tópicos dos slides 4 e 5 são numerados automaticamente e **a numeração
 continua da coluna da esquerda para a da direita** — dois tópicos à esquerda
 fazem a direita começar em 3. Não escreva o número no texto.
 
@@ -216,12 +296,12 @@ fazem a direita começar em 3. Não escreva o número no texto.
 
 ```
 versionado:
-  montar.py            monta o params.json a partir da planilha e do dossiê
+  montar.py            monta o params.json (planilha, Obsidian, banco, GLPI)
   gerar.py             o gerador
   template.pptx        o modelo institucional (não editar)
   params.exemplo.json  exemplo fictício, copie para params.json
   execucoes.py         extrai as execuções do trimestre
-  glpi_sla.py          extrai o SLA do GLPI
+  glpi_sla.py          extrai o SLA e a disponibilidade do GLPI
   probe.py             valores distintos de uma coluna, para a quebra
   checar_robos.py      confere as tabelas contra o banco
   fumaca.py            roda todos os robôs pela consulta e confere os totais
@@ -230,6 +310,8 @@ versionado:
 local, nunca versionado:
   .env                    credenciais do banco e do GLPI
   Tabelas Artemis.xlsx    cliente -> robô -> tabela(s) -> quebra
+  status-local.json       classificação dos status, por robô
+  valor-local.json        tempo manual, custo/hora e frases de entrega, por robô
   params.json             o ATE que você está montando agora
 ```
 
@@ -245,7 +327,9 @@ O gráfico de SLA é um combo: barras de chamados no eixo principal e a linha de
 dois eixos de valor estão **escondidos, não apagados** — com o eixo apagado o
 PowerPoint desenha a linha na escala dos chamados e ela cola no chão.
 
-O gerador acha cada caixa pelo nome (`Capa`, `Agenda`, `Escopo`,
-`Grafico Execucoes`, `Assertividade`, `Grafico SLA`, `Total`, `Dentro`, `Fora`,
-`Esquerda`, `Direita`). Quem editar o `template.pptx` à mão precisa manter
+O gerador acha cada caixa pelo nome (`Capa`; no slide 2 `Escopo`, `Volume`,
+`Horas`, `Economia`, `Disponibilidade`, `Entregas`, `Nota`; no slide 3
+`Grafico Execucoes`, `Grafico SLA`, `Assertividade`, `SLA`, `Disponibilidade`;
+nos slides 4 e 5 `Esquerda` e `Direita`). Cada cartão tem três parágrafos:
+número, legenda e detalhe. Quem editar o `template.pptx` à mão precisa manter
 esses nomes (Página Inicial → Organizar → Painel de Seleção).
