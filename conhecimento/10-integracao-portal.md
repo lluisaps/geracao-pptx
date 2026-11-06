@@ -1,68 +1,73 @@
-# Integração com o portal
+# Integração com o portal: o chat do Gerador de ATE
 
-O gerador tem uma tela no **portal Automation Control Plus** (Node/Express,
-sites modulares): o site `gerador-ate`. O código mora **neste repositório**,
-em [`portal/sites/gerador-ate/`](../portal/sites/gerador-ate/), e é copiado
+O gerador tem uma tela de **chat** no portal Automation Control Plus: o site
+`gerador-ate`. O código mora **neste repositório**, em
+[`portal/sites/gerador-ate/`](../portal/sites/gerador-ate/), e é copiado
 para `sites/gerador-ate/` do portal — o guia do portal
 (`docs/COMO_ADICIONAR_SITES.md`) manda que todo o código do site fique só ali.
 
-## O que a tela faz
+## Como funciona
 
-1. **Cliente e trimestre** → roda `montar.py` (planilha, vault, banco e GLPI
-   em leitura) e mostra o relatório do que conferir.
-2. **Revisar** → cartões de resumo (itens, entregues, assertividade, SLA,
-   disponibilidade) e os campos com texto: escopo, tempo manual, custo/hora,
-   entregas, destaques e faixa do slide 6, slides 7 e 8, slides a ocultar,
-   params.json completo. Campo com `REVISAR` fica amarelo e o botão de gerar
-   fica **bloqueado** até não sobrar nenhum.
-3. **Gerar** → roda `gerar.py --conferencia`, mostra os slides em miniatura e
-   dá o download do .pptx.
+A gestora conversa; quem responde é **o Claude Code** rodando sem tela
+(`claude -p`) dentro deste repositório — o mesmo agente do terminal:
 
-Cada pedido é um **trabalho** numa pasta própria (params, .pptx, PNGs); o
-`params.json` do repositório nunca é tocado. Trabalhos com mais de 24 h são
-apagados quando um novo começa.
+- usa o **login/assinatura de quem instalou o Claude Code** na máquina — sem
+  chave de API e sem cobrança à parte;
+- lê o `CLAUDE.md` e esta base sozinho;
+- cada conversa é uma sessão (`--session-id` na 1ª mensagem, `--resume`
+  depois), então ele lembra do que já foi dito;
+- a resposta chega na tela em tempo real; as ferramentas que ele usa
+  aparecem como linhas cinza ("Buscando dados…", "Gerando…");
+- quando um .pptx novo aparece na pasta da conversa, o painel da direita
+  mostra as miniaturas e o botão de baixar.
 
-## Regras do site
+Cada conversa tem uma pasta própria (params.json, .pptx, PNGs); o
+`params.json` do repositório não é tocado. Pastas com mais de 24 h somem.
 
-- não reimplementa regra de ATE: chama `montar.py` e `gerar.py` daqui;
-- Python por `execFile`, sem shell; cliente, meses, robô e competência
-  validados; id de trabalho e nome de slide só no padrão (sem `../`);
-- `meta.permissao: 8` (1–7 já usados no portal em 2026-11) — só gestão de
-  contas deve receber;
-- não grava `valor-local.json` nem `status-local.json`: tempo e custo vão só
-  no params do trabalho. Gravar para os próximos trimestres continua sendo
-  decisão da gestora, feita no repositório.
+## O que o agente pode e não pode na tela
+
+`services/agente.js` passa listas fixas ao Claude Code (em `-p`, o que
+estiver fora da lista é negado sem perguntar):
+
+| Pode | Não pode |
+|---|---|
+| Read, Glob, Grep (repositório, pasta da conversa, vault) | WebFetch, WebSearch |
+| `python montar.py / gerar.py / execucoes.py / glpi_sla.py / probe.py` | git, curl, rm, qualquer outro comando |
+| Edit/Write de dados (params da conversa; `-local.json` com aprovação da gestora) | editar `.py`, `.md`, `.env`, `.pptx`, `.xlsx` |
+
+Instruções extras só da tela (`--append-system-prompt`): responder curto,
+uma pergunta por vez, sem git (o repositório é atualizado por quem mantém o
+portal), comandos sempre na forma `python <script>.py ...`, sem scripts
+auxiliares.
 
 ## Instalar no portal
 
-1. copiar `portal/sites/gerador-ate/` para `sites/gerador-ate/` do portal;
+1. copiar `portal/sites/gerador-ate/` para `sites/gerador-ate/`;
 2. no ambiente do portal:
    ```
    GERADOR_ATE_DIR=<pasta deste repositório, com .env, planilha e -local.json>
-   GERADOR_ATE_PYTHON=python3            # opcional
-   GERADOR_ATE_JOBS=/var/tmp/gerador-ate # opcional
+   GERADOR_ATE_CLAUDE=<caminho do claude, se não estiver no PATH>
+   GERADOR_ATE_VAULT=<pasta do vault>          # opcional se houver Obsidian
+   GERADOR_ATE_JOBS=/var/tmp/gerador-ate       # opcional
    ```
-3. Python 3 + `python-pptx` + `pymysql` no mesmo host/container; LibreOffice
-   para as miniaturas no Linux (no Windows, PowerPoint);
-4. o vault precisa estar acessível nesse host (o `montar.py` acha pelo
-   registro do Obsidian ou por uma pasta com `.obsidian`; `--vault` não é
-   exposto na tela — em servidor, deixe um `.obsidian` na raiz do vault);
-5. reiniciar e conferir `[registry] Site registrado: Gerador de ATE`.
+3. Claude Code instalado **e logado** nesse host; Python 3 + `python-pptx`
+   + `pymysql`; LibreOffice para as miniaturas no Linux;
+4. reiniciar e conferir `[registry] Site registrado: Gerador de ATE`
+   (`meta.permissao: 8`).
 
 ## Simular sem o portal
 
 ```
-GERADOR_ATE_DIR=<repo> node sites/gerador-ate/simular.js "<cliente>" 2026-04 2026-06
+GERADOR_ATE_DIR=<repo> GERADOR_ATE_CLAUDE=<claude> node sites/gerador-ate/simular.js [porta]
 ```
 
-Sobe só este site (sem `server.js`, sem login, **sem** a sincronização de
-permissões que grava em `acp_permissao`), faz o fluxo pela API e confere
-validação, bloqueio por REVISAR, geração, PNG e download. Os textos que a
-simulação preenche saem marcados `[SIMULAÇÃO]`.
+Sobe só o chat em `127.0.0.1` (sem `server.js`, sem login, **sem** a
+sincronização de permissões que grava em `acp_permissao`).
 
-## Em aberto
+## Atenção: assinatura
 
-- **Onde roda o Python** no servidor: container do portal ou serviço à parte.
-- **Vault no servidor**: sync do vault, já que lá não há Obsidian.
-- **Agente na tela**: botão "propor textos" chamando o Claude com a base de
-  `conhecimento/` — hoje a revisão é manual.
+O chat consome a assinatura de quem está logado no Claude Code daquela
+máquina. Para uso da própria gestora, na máquina dela, é o caso de uso
+normal. Para **várias pessoas** usando pelo portal num servidor, confirme
+antes se o plano contratado permite esse uso compartilhado (plano de equipe
+ou empresa) — senão, cada pessoa usa o chat na própria máquina.

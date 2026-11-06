@@ -2,29 +2,29 @@ const os = require('os');
 const path = require('path');
 
 /**
- * O site não tem regra de ATE nenhuma: ele chama o montar.py e o gerar.py do
- * repositório geracao-pptx, que é onde as regras moram (e a base de
- * conhecimento do agente, em conhecimento/). Aqui só fica ONDE achar esse
- * repositório e como rodar o Python — tudo por variável de ambiente, porque
- * muda de máquina para máquina.
+ * O "cérebro" do chat é o Claude Code rodando sem tela (-p) dentro do
+ * repositório geracao-pptx — com o MESMO login/assinatura de quem o
+ * instalou, sem chave de API à parte. Ele lê o CLAUDE.md e a base
+ * conhecimento/ sozinho; o site só repassa mensagens e mostra os slides.
  *
- *   GERADOR_ATE_DIR     pasta do geracao-pptx (com montar.py, gerar.py, .env,
- *                       planilha e os -local.json)          — obrigatória
- *   GERADOR_ATE_PYTHON  executável do Python                — padrão python/python3
- *   GERADOR_ATE_JOBS    onde cada geração guarda params, .pptx e PNGs
- *                                                           — padrão: pasta temporária
+ *   GERADOR_ATE_DIR     pasta do geracao-pptx (montar.py, gerar.py, .env,
+ *                       planilha, -local.json)                 — obrigatória
+ *   GERADOR_ATE_CLAUDE  executável do Claude Code              — padrão: "claude"
+ *   GERADOR_ATE_VAULT   pasta do vault do Obsidian             — padrão: o que o
+ *                       Obsidian registrou em %APPDATA%/obsidian/obsidian.json
+ *   GERADOR_ATE_JOBS    pasta de trabalho de cada conversa     — padrão: temporária
  */
 module.exports = {
     repositorio: process.env.GERADOR_ATE_DIR || '',
-    python: process.env.GERADOR_ATE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+    claude: process.env.GERADOR_ATE_CLAUDE || 'claude',
+    vault: process.env.GERADOR_ATE_VAULT || '',
     pastaTrabalhos: process.env.GERADOR_ATE_JOBS || path.join(os.tmpdir(), 'gerador-ate'),
 
-    // montar.py consulta banco e GLPI; o gerar.py com conferência abre o PowerPoint
-    timeoutMontarMs: 6 * 60 * 1000,
-    timeoutGerarMs: 5 * 60 * 1000,
+    // uma resposta do agente pode buscar banco, GLPI e gerar o deck
+    timeoutRespostaMs: 15 * 60 * 1000,
 
-    // trabalho mais velho que isto é apagado quando um novo começa
+    // conversa (e a pasta dela) mais velha que isto é apagada
     validadeTrabalhoMs: 24 * 60 * 60 * 1000,
 
-    limiteParamsBytes: 300 * 1024
+    limiteMensagem: 8000
 };
