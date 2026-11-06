@@ -63,7 +63,7 @@ vence qualquer divergência — diga qual foi.
 | status, assertividade, o que é falha de quem | [07-status-e-assertividade.md](conhecimento/07-status-e-assertividade.md) |
 | como escrever os textos dos slides | [08-textos-e-tom.md](conhecimento/08-textos-e-tom.md) |
 | o que você não pode fazer | [09-limites-e-seguranca.md](conhecimento/09-limites-e-seguranca.md) |
-| o plano de virar um site no portal | [10-integracao-portal.md](conhecimento/10-integracao-portal.md) |
+| a tela no portal (site gerador-ate) | [10-integracao-portal.md](conhecimento/10-integracao-portal.md) |
 
 ## Quando aprender algo novo
 

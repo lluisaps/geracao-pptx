@@ -678,11 +678,22 @@ def renderizar(caminho, pasta="conferencia"):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    # --conferencia <pasta> escolhe onde vão os PNGs (o portal usa uma pasta
+    # por geração, para duas pessoas não sobrescreverem a conferência uma da
+    # outra); sem ele, a pasta "conferencia" de sempre.
+    pasta_conf = "conferencia"
+    resto = sys.argv[1:]
+    if "--conferencia" in resto:
+        i = resto.index("--conferencia")
+        if i + 1 >= len(resto):
+            sys.exit("erro: --conferencia precisa de uma pasta.")
+        pasta_conf = resto[i + 1]
+        del resto[i:i + 2]
+    args = [a for a in resto if not a.startswith("--")]
     par = args[0] if args else "params.json"
     out = args[1] if len(args) > 1 else "ATE.pptx"
     print("gerando %s a partir de %s" % (out, par))
     gerar(par, out)
     print("pronto: %s" % out)
-    if "--conferir" in sys.argv:
-        renderizar(out)
+    if "--conferir" in resto or "--conferencia" in sys.argv:
+        renderizar(out, pasta_conf)

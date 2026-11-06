@@ -14,7 +14,7 @@ Cada arquivo responde a uma pergunta. O agente abre **só o do assunto** —
 | [07-status-e-assertividade.md](07-status-e-assertividade.md) | baldes de status e a régua | status sem classificação, assertividade baixa |
 | [08-textos-e-tom.md](08-textos-e-tom.md) | como escrever para diretoria | qualquer texto que vai para o slide |
 | [09-limites-e-seguranca.md](09-limites-e-seguranca.md) | o que o agente nunca faz | antes de qualquer consulta ou commit |
-| [10-integracao-portal.md](10-integracao-portal.md) | como isto vira um site do portal | quando for integrar ao terminal/portal |
+| [10-integracao-portal.md](10-integracao-portal.md) | a tela no portal (site gerador-ate) | instalar, simular ou mexer na tela |
 
 ## Fontes, de relance
 
