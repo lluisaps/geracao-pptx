@@ -276,6 +276,14 @@ def gerar(params, saida):
             resumo_disp = "pelos chamados de sustentação"
             detalhe_disp = ("%s h de parada no trimestre" % decimal_br(h) if h
                             else "nenhuma parada registrada")
+        # Comparativo mês a mês no slide 3: o número grande é o do trimestre
+        # e a linha de baixo mostra cada mês (mesma régua, piso de 1 casa).
+        meses_disp = [m for m in disp.get("meses") or []
+                      if m.get("percentual") is not None]
+        if meses_disp and not disp.get("fonte"):
+            detalhe_disp = " · ".join(
+                "%s %s" % (m["mes"][:3], pct_piso(m["percentual"]))
+                for m in meses_disp)
     else:
         pct_disp = A_CONFIRMAR
         resumo_disp = detalhe_disp = "sem fonte no período"

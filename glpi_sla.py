@@ -441,12 +441,35 @@ def _no_do_chamado(t):
     return (html.unescape(t.get(str(F_ENTIDADE)) or "")).split(">")[-1].strip()
 
 
-def disponibilidade(chamados, ini_mes, fim_mes, robos, agora=None):
+def _meses_do_periodo(ini_mes, fim_mes):
+    a, m = [int(x) for x in ini_mes.split("-")]
+    a1, m1 = [int(x) for x in fim_mes.split("-")]
+    while (a, m) <= (a1, m1):
+        yield "%04d-%02d" % (a, m), m
+        a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+
+
+def disponibilidade(chamados, ini_mes, fim_mes, robos, agora=None,
+                    por_mes=True):
     """Disponibilidade estimada do(s) robô(s) no período, 24x7.
 
     robos = códigos como estão no nó do GLPI ("ABC01"). Devolve um dict com
     percentual, horas indisponíveis, horas do período e os chamados usados.
+    Com por_mes, também "meses": a mesma conta mês a mês, para o comparativo
+    do slide (cada mês com as próprias horas; chamado que atravessa a virada
+    do mês conta em cada mês só a parte dele).
     """
+    meses = None
+    if por_mes:
+        meses = []
+        for am, m in _meses_do_periodo(ini_mes, fim_mes):
+            d = disponibilidade(chamados, am, am, robos, agora, por_mes=False)
+            meses.append(OrderedDict([
+                ("mes", MESES[m - 1]),
+                ("percentual", None if d["percentual"] is None
+                 else round(d["percentual"], 3)),
+                ("horas_indisponivel", d["horas_indisponivel"]),
+                ("chamados", d["chamados"])]))
     a0, m0 = [int(x) for x in ini_mes.split("-")]
     a1, m1 = [int(x) for x in fim_mes.split("-")]
     inicio = datetime(a0, m0, 1)
@@ -484,11 +507,14 @@ def disponibilidade(chamados, ini_mes, fim_mes, robos, agora=None):
 
     horas = (fim_efetivo - inicio).total_seconds() / 3600
     pct = 100.0 * (1 - horas_fora / horas) if horas > 0 else None
-    return OrderedDict([("percentual", pct),
-                        ("horas_indisponivel", round(horas_fora, 1)),
-                        ("horas_periodo", round(horas)),
-                        ("chamados", len(usados)),
-                        ("_usados", usados)])
+    d = OrderedDict([("percentual", pct),
+                     ("horas_indisponivel", round(horas_fora, 1)),
+                     ("horas_periodo", round(max(horas, 0))),
+                     ("chamados", len(usados))])
+    if meses is not None:
+        d["meses"] = meses
+    d["_usados"] = usados
+    return d
 
 
 def relatorio_disponibilidade(d, robos):
@@ -505,6 +531,10 @@ def relatorio_disponibilidade(d, robos):
     print("  %.1f h indisponível de %d h  ->  %s"
           % (d["horas_indisponivel"], d["horas_periodo"],
              "—" if d["percentual"] is None else "%.2f%%" % d["percentual"]))
+    for m in d.get("meses") or []:
+        print("    %-10s %5.1f h  %d chamado(s)  ->  %s"
+              % (m["mes"], m["horas_indisponivel"], m["chamados"],
+                 "—" if m["percentual"] is None else "%.3f%%" % m["percentual"]))
 
 
 def bloco_params(buckets):
