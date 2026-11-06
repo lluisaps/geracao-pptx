@@ -9,16 +9,28 @@ gráficos de verdade, tudo editável no PowerPoint.
 O layout, as fontes, as cores e a decoração vêm intactos do `template.pptx` —
 o gerador só troca conteúdo.
 
-O ATE mostra **valor de negócio**, não só operação. São seis slides:
+O ATE mostra **valor de negócio**, não só operação. São até nove slides — o
+modelo oficial tem onze tipos, e os opcionais (*) só entram com dado:
 
 | # | Slide | O que mostra |
 |---|---|---|
 | 1 | Capa | competência |
 | 2 | Resumo Executivo — Valor Gerado | escopo, quatro cartões (itens processados, horas poupadas, economia, disponibilidade) e o que foi entregue |
-| 3 | Indicadores de Operação | execuções e SLA lado a lado; cartões de assertividade, SLA e disponibilidade |
-| 4 | Melhorias Entregues no Período | o que foi entregue no robô e o que se fez para evitar falhas |
-| 5 | Próximas Evoluções e Oportunidades | o que vem para o robô e automações do mesmo segmento em outros clientes |
-| 6 | Encerramento | fixo |
+| 3* | Horas e Valor Financeiro | a conta aberta: itens × tempo manual, dias úteis, horas × custo/hora, disponibilidade mês a mês |
+| 4 | Indicadores de Operação | execuções e SLA lado a lado; cartões de assertividade, SLA e disponibilidade |
+| 5* | Volume Processado | tabela mês a mês: entregas, casos fora da regra, falhas detectadas, total |
+| 6* | O que fizemos para evitar falhas | três números (falhas de API detectadas, casos barrados, chamados no SLA) e uma faixa de contexto |
+| 7 | Melhorias Entregues no Período | o que foi entregue no robô e o que se fez para evitar falhas |
+| 8 | Próximas Evoluções e Oportunidades | o que vem para o robô e automações do mesmo segmento em outros clientes |
+| 9 | Encerramento | fixo |
+
+**Agente**: o [CLAUDE.md](CLAUDE.md) transforma o Claude Code no gerador de ATE
+deste repositório, e a pasta [conhecimento/](conhecimento/README.md) é a base
+que ele consulta — um .md por fonte (slides, valor, banco, GLPI, vault,
+planilha, status, textos, limites, integração com o portal).
+
+Os slides opcionais vêm do MODELO OFICIAL pelo `construir_template.py`
+(roda uma vez, quando o modelo mudar).
 
 ## Requisitos
 
@@ -112,7 +124,11 @@ versionado.
 | `valor_gerado.entregas` | 2 | lista "O que foi entregue no trimestre" |
 | `disponibilidade.percentual` | 2 e 3 | cartão de disponibilidade; `null` = "a confirmar" |
 | `disponibilidade.horas_indisponivel` | 3 | detalhe do cartão ("0,2 h de parada no trimestre") |
-| `disponibilidade.fonte` | 2 e 3 | opcional: quando o número vem de outra fonte, ela vai escrita no cartão |
+| `disponibilidade.fonte` | 2 e 4 | opcional: quando o número vem de outra fonte, ela vai escrita no cartão |
+| `valor_gerado.origem` | 2 | opcional: de onde vieram tempo e custo (padrão "informados pelo cliente") |
+| `volume_processado` | 5 | `colunas` (meses + Trimestre) e `linhas` (`rotulo`, `valores`, `destaque`) |
+| `prevencao` | 6 | `destaques` (`numero`, `titulo`, `texto`) e `faixa` (`titulo`, `texto`) |
+| `ocultar` | 3, 5, 6 | lista de slides opcionais a tirar mesmo com dado: `valor`, `volume`, `prevencao` |
 | `grafico_execucoes.titulo` | 3 | título acima do gráfico |
 | `grafico_execucoes.assertividade` | 3 | número (99.35) ou texto pronto; vira o cartão de assertividade |
 | `grafico_execucoes.meses` / `execucoes` | 2 e 3 | uma barra por mês; a soma é o cartão de itens processados |
@@ -296,8 +312,11 @@ fazem a direita começar em 3. Não escreva o número no texto.
 
 ```
 versionado:
+  CLAUDE.md            instruções do agente gerador de ATE
+  conhecimento/        base de conhecimento do agente, um .md por fonte
   montar.py            monta o params.json (planilha, Obsidian, banco, GLPI)
   gerar.py             o gerador
+  construir_template.py copia os slides opcionais do MODELO OFICIAL
   template.pptx        o modelo institucional (não editar)
   params.exemplo.json  exemplo fictício, copie para params.json
   execucoes.py         extrai as execuções do trimestre

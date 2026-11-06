@@ -8,8 +8,15 @@ Só o conteúdo muda: layout, fontes, cores e decoração vêm intactos do templ
 Use **texto** dentro das strings para destacar (azul no escopo do slide 2,
 negrito nas entregas e nos slides 4 e 5).
 
-Slides: 1 capa · 2 resumo executivo (valor gerado) · 3 indicadores de
-operação · 4 melhorias entregues · 5 próximas evoluções · 6 encerramento.
+Slides (até 9; os marcados com * são opcionais e só ficam quando o
+params.json tem dado para eles):
+
+  1 capa · 2 resumo executivo (valor gerado) · 3* horas e valor financeiro ·
+  4 indicadores de operação · 5* volume processado · 6* o que fizemos para
+  evitar falhas · 7 melhorias entregues · 8 próximas evoluções · 9 encerramento
+
+O modelo oficial tem 11 tipos de slide; os opcionais vêm dele, pelo
+construir_template.py.
 """
 import json
 import os
@@ -216,11 +223,211 @@ def montar_lista(shape, itens):
         txb.append(p)
 
 
+# ------------------------------------------------------- slides do modelo
+# Cada slide é reconhecido por uma forma que só ele tem — a ordem do
+# template pode mudar sem quebrar o gerador.
+MARCAS = [
+    ("valor", "Slide Valor"),
+    ("volume", "Slide Volume"),
+    ("prevencao", "Slide Prevencao"),
+    ("resumo", "Escopo"),
+    ("indicadores", "Grafico Execucoes"),
+    ("capa", "Capa"),
+]
+
+
+def _tem(slide, nome):
+    try:
+        achar(slide, nome)
+        return True
+    except KeyError:
+        return False
+
+
+def identificar(prs):
+    """{papel: slide}. Os dois slides de colunas (Esquerda/Direita) são, na
+    ordem, melhorias e próximas evoluções."""
+    papeis, colunas = {}, []
+    for slide in prs.slides:
+        papel = next((p for p, m in MARCAS if _tem(slide, m)), None)
+        if papel:
+            papeis[papel] = slide
+        elif _tem(slide, "Esquerda"):
+            colunas.append(slide)
+    papeis["melhorias"], papeis["proximas"] = colunas[:2]
+    return papeis
+
+
+def remover_slide(prs, slide):
+    lista = prs.slides._sldIdLst
+    for sid in list(lista):
+        if prs.part.related_part(sid.rId) is slide.part:
+            prs.part.drop_rel(sid.rId)
+            lista.remove(sid)
+            return
+
+
+def _p0(slide, nome):
+    return achar(slide, nome).text_frame._txBody.findall(qn("a:p"))[0]
+
+
+def cabecalho(slide, tag, titulo, subtitulo):
+    """Tag, título (**trecho** em azul) e subtítulo de um slide do modelo."""
+    trocar_texto(_p0(slide, "Tag"), tag)
+    p = _p0(slide, "Titulo")
+    rs = runs_de(p)
+    escrever(p, titulo, deepcopy(rs[0]), deepcopy(rs[-1]))
+    trocar_texto(_p0(slide, "Subtitulo"), subtitulo)
+
+
+def _estilo(p, tamanho=None, negrito=False, centro=False):
+    for r in runs_de(p):
+        rPr = r.find(qn("a:rPr"))
+        rPr.attrib.pop("err", None)     # sublinhado de ortografia do lorem
+        if tamanho:
+            rPr.set("sz", str(int(tamanho * 100)))
+        if negrito:
+            rPr.set("b", "1")
+    if centro:
+        pPr = p.find(qn("a:pPr"))
+        if pPr is None:
+            pPr = p.makeelement(qn("a:pPr"), {})
+            p.insert(0, pPr)
+        pPr.set("algn", "ctr")
+
+
+def _texto(slide, nome, texto, tamanho=None, negrito=False):
+    p = _p0(slide, nome)
+    trocar_texto(p, texto)
+    _estilo(p, tamanho, negrito)
+
+
+def slide_valor(slide, itens, minutos, horas, custo, pct_disp, detalhe_disp, disp):
+    """Tipo 'números' do modelo: horas, economia e disponibilidade abertas."""
+    cabecalho(slide, "Valor Gerado", "Horas e Valor **Financeiro**",
+              "Como chegamos aos números do trimestre")
+    casas = 0 if float(minutos).is_integer() else 1
+    _texto(slide, "Cabecalho Horas", "Horas economizadas")
+    _texto(slide, "Numero Horas", "%s h" % milhar(horas), 28, True)
+    # legenda e pílula cabem em UMA linha cada (a pílula tem ~1,3")
+    _texto(slide, "Legenda Horas", "%s itens × %s min manuais"
+           % (milhar(itens), decimal_br(minutos, casas)), 9)
+    _texto(slide, "Pilula Horas", "≈ %s dias úteis" % milhar(horas / 8), 11)
+
+    _texto(slide, "Cabecalho Economia", "Valor financeiro")
+    if custo:
+        _texto(slide, "Numero Economia", reais(horas * custo), 28, True)
+        _texto(slide, "Legenda Economia", "%s h × custo médio da equipe"
+               % milhar(horas), 9)
+    else:
+        _texto(slide, "Numero Economia", A_CONFIRMAR, 20, True)
+        _texto(slide, "Legenda Economia", "falta o custo/hora médio da equipe", 9)
+    _texto(slide, "Pilula Economia",
+           "R$ %s/h" % milhar(custo) if custo else "estimativa", 11)
+
+    _texto(slide, "Cabecalho Disponibilidade", "Disponibilidade")
+    _texto(slide, "Numero Disponibilidade", pct_disp,
+           28 if pct_disp != A_CONFIRMAR else 20, True)
+    _texto(slide, "Legenda Disponibilidade", detalhe_disp, 9)
+    n = (disp or {}).get("chamados")
+    _texto(slide, "Pilula Disponibilidade",
+           "sem parada" if not n else
+           "%d chamado%s" % (n, "s" if n > 1 else ""), 11)
+
+
+def _fmt(v):
+    return milhar(v) if isinstance(v, (int, float)) else str(v)
+
+
+def _celula(cel, texto, tamanho=None, negrito=False, centro=False):
+    corpo = cel.text_frame._txBody
+    ps = corpo.findall(qn("a:p"))
+    for extra in ps[1:]:
+        corpo.remove(extra)
+    rn = deepcopy(runs_de(ps[0])[0])
+    escrever(ps[0], texto, rn, negritar(rn))
+    _estilo(ps[0], tamanho, negrito, centro)
+
+
+def slide_volume(slide, vol):
+    """Tipo 'tabelas' do modelo: uma linha por entrega, uma coluna por mês."""
+    cabecalho(slide, "Volume", vol.get("titulo", "Volume **Processado**"),
+              vol.get("subtitulo", "O que o robô entregou, mês a mês"))
+    forma = achar(slide, "Tabela Volume")
+    tbl = forma.table._tbl
+    colunas = [""] + list(vol["colunas"])
+    linhas = vol["linhas"]
+
+    # colunas: clona uma coluna do MEIO e insere antes da última — a última
+    # tem borda direita diferente, e a linha termina num <a:extLst> depois do
+    # qual nenhuma célula é lida. Para remover, tira as do meio pelo mesmo
+    # motivo.
+    grid = tbl.find(qn("a:tblGrid"))
+    trs = tbl.findall(qn("a:tr"))
+    while len(grid.findall(qn("a:gridCol"))) < len(colunas):
+        gcs = grid.findall(qn("a:gridCol"))
+        gcs[-1].addprevious(deepcopy(gcs[1]))
+        for tr in trs:
+            tcs = tr.findall(qn("a:tc"))
+            tcs[-1].addprevious(deepcopy(tcs[1]))
+    while len(grid.findall(qn("a:gridCol"))) > len(colunas):
+        grid.remove(grid.findall(qn("a:gridCol"))[-2])
+        for tr in trs:
+            tr.remove(tr.findall(qn("a:tc"))[-2])
+    # 1ª coluna (o rótulo) mais larga; o resto divide o que sobra
+    gcs = grid.findall(qn("a:gridCol"))
+    primeira = int(forma.width * 0.40)
+    for i, gc in enumerate(gcs):
+        gc.set("w", str(primeira if i == 0 else
+                        (forma.width - primeira) // (len(gcs) - 1)))
+
+    # linhas: cabeçalho + uma por item, clonadas da 1ª linha de dados
+    modelo_linha = deepcopy(trs[1])
+    for tr in trs[1:]:
+        tbl.remove(tr)
+    for _ in linhas:
+        tbl.append(deepcopy(modelo_linha))
+
+    t = forma.table
+    for j, nome in enumerate(colunas):
+        _celula(t.cell(0, j), nome, centro=j > 0)
+    for i, linha in enumerate(linhas, 1):
+        forte = bool(linha.get("destaque"))
+        _celula(t.cell(i, 0), linha["rotulo"], 11, forte)
+        for j, v in enumerate(linha["valores"], 1):
+            _celula(t.cell(i, j), _fmt(v), 11, forte, centro=True)
+
+
+def slide_prevencao(slide, prev):
+    """Tipo 'destaques' do modelo: três números e uma faixa de contexto."""
+    cabecalho(slide, "Prevenção",
+              prev.get("titulo", "O que fizemos para **evitar falhas**"),
+              prev.get("subtitulo",
+                       "Falhas detectadas e tratadas sem impacto na operação"))
+    for i, d in enumerate(prev["destaques"][:3], 1):
+        ps = achar(slide, "Texto Destaque %d" % i).text_frame._txBody.findall(qn("a:p"))
+        rs = runs_de(ps[0])
+        # no modelo o 1º run é azul e o último é branco
+        escrever(ps[0], "**%s** %s" % (d["numero"], d["titulo"]),
+                 deepcopy(rs[-1]), deepcopy(rs[0]))
+        trocar_texto(ps[2], d.get("texto", ""))
+    faixa = prev.get("faixa") or {}
+    p = _p0(slide, "Faixa Titulo")
+    rs = runs_de(p)
+    escrever(p, faixa.get("titulo", "**Operação** protegida"),
+             deepcopy(rs[-1]), deepcopy(rs[0]))
+    trocar_texto(_p0(slide, "Faixa Texto"), faixa.get("texto", ""))
+
+
 # ------------------------------------------------------------------ principal
 def gerar(params, saida):
     cfg = json.load(open(params, encoding="utf-8"))
     prs = Presentation(TEMPLATE)
-    s = list(prs.slides)
+    papeis = identificar(prs)
+    # s[...] mantém a ordem antiga para o miolo do código não mudar:
+    # capa, resumo, indicadores, melhorias, próximas
+    s = [papeis[k] for k in ("capa", "resumo", "indicadores", "melhorias",
+                             "proximas")]
 
     # ---------------------------------------------------------- slide 1: capa
     # A capa do modelo oficial não tem logo de cliente: só o da Yank, que é
@@ -249,16 +456,19 @@ def gerar(params, saida):
     horas = itens * minutos / 60.0 if itens and minutos else None
     if horas is not None:
         casas = 0 if float(minutos).is_integer() else 1
+        # o equivalente em dias úteis mora AQUI, junto das horas: é a mesma
+        # grandeza em outra unidade (8 h/dia), e o cartão já diz a base
         preencher_cartao(s[1], "Horas", "%s h" % milhar(horas),
                          "horas de trabalho poupadas",
-                         "%s itens × %s min" % (milhar(itens),
-                                                decimal_br(minutos, casas)))
+                         "≈ %s dias úteis · %s min por item"
+                         % (milhar(horas / 8), decimal_br(minutos, casas)))
     else:
         preencher_cartao(s[1], "Horas", A_CONFIRMAR, "horas de trabalho poupadas",
                          "falta o tempo manual por item")
     if horas is not None and custo:
         preencher_cartao(s[1], "Economia", reais(horas * custo), "economia estimada",
-                         "%s dias úteis · R$ %s/h" % (milhar(horas / 8), milhar(custo)))
+                         "%s h × R$ %s/h de custo operacional"
+                         % (milhar(horas), milhar(custo)))
     else:
         preencher_cartao(s[1], "Economia", A_CONFIRMAR, "economia estimada",
                          "falta o custo/hora da equipe" if horas is not None
@@ -297,7 +507,7 @@ def gerar(params, saida):
                 "médio por item e o custo/hora da equipe.")
     else:
         nota = ("Horas e economia estimadas com o tempo manual médio por item "
-                "e o custo/hora informados pelo cliente.")
+                "e o custo/hora %s." % (v.get("origem") or "informados pelo cliente"))
     if disp.get("percentual") is not None and not disp.get("fonte"):
         nota += (" Disponibilidade estimada pelo tempo dos chamados de "
                  "sustentação, 24x7.")
@@ -367,6 +577,32 @@ def gerar(params, saida):
                           proto_top, proto_item, proto_vazio)
         montar_coluna(achar(s[idx], "Direita"), bloco.get("direita", []), n,
                       proto_top, proto_item, proto_vazio)
+
+    # ------------------------------------------------ slides opcionais
+    ocultar = set(cfg.get("ocultar") or [])
+    fora = []
+    if "valor" in papeis:
+        if horas is not None and "valor" not in ocultar:
+            slide_valor(papeis["valor"], itens, minutos, horas, custo,
+                        pct_disp, detalhe_disp, disp)
+        else:
+            fora.append("valor")
+    if "volume" in papeis:
+        vol = cfg.get("volume_processado")
+        if vol and vol.get("linhas") and "volume" not in ocultar:
+            slide_volume(papeis["volume"], vol)
+        else:
+            fora.append("volume")
+    if "prevencao" in papeis:
+        prev = cfg.get("prevencao")
+        if prev and prev.get("destaques") and "prevencao" not in ocultar:
+            slide_prevencao(papeis["prevencao"], prev)
+        else:
+            fora.append("prevencao")
+    for papel in fora:
+        remover_slide(prs, papeis[papel])
+    print("  slides: %d%s" % (len(prs.slides),
+                              " (fora: %s)" % ", ".join(fora) if fora else ""))
 
     prs.save(saida)
     return saida

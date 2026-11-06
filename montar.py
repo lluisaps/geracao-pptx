@@ -71,6 +71,9 @@ ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
 
 REVISAR = "REVISAR: "
 
+MESES_NOME = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+
 # Código de robô: duas a quatro letras e dois ou três dígitos. Não fixa o "R"
 # inicial nem o tamanho porque cada gerente numera a carteira do seu jeito.
 CODIGO_ROBO = re.compile(r"\b([A-Z]{2,4}\d{2,3})\b")
@@ -653,7 +656,8 @@ def textos_do_dossie(dossie, robo):
 
 # ------------------------------------------------------------------- dados
 def dados_execucoes(tabelas, ini, fim, quebra, robo=None):
-    """(grafico_execucoes, assertividade, {status: total}, {status: balde})."""
+    """(grafico_execucoes, assertividade, {status: total}, {status: balde},
+    {(ano, mês): {status: total}})."""
     import execucoes
     import status as status_mod
     linhas = execucoes.consultar(tabelas, ini, fim)
@@ -666,16 +670,20 @@ def dados_execucoes(tabelas, ini, fim, quebra, robo=None):
             soma[st] = soma.get(st, 0) + n
     baldes = status_mod.apurar(soma, robo)[2]
     if not quebra:
-        return execucoes.bloco_params(buckets, totais, pct), pct, soma, baldes
+        return (execucoes.bloco_params(buckets, totais, pct), pct, soma,
+                baldes, buckets)
     print()
     q = execucoes.apurar_quebra(
         execucoes.consultar_quebra(tabelas, ini, fim, quebra), ini, fim)
     categorias = execucoes.relatorio_quebra(q, quebra)
-    soma = sum(sum(b.values()) for b in q.values())
-    if soma != sum(totais):
+    # total da quebra em variável própria: "soma" é o {status: total} que o
+    # valor gerado usa, e sobrescrevê-la com um int derrubava o script
+    total_quebra = sum(sum(b.values()) for b in q.values())
+    if total_quebra != sum(totais):
         print("\nATENÇÃO: a quebra soma %d e os status somam %d — não bate."
-              % (soma, sum(totais)))
-    return execucoes.bloco_params_quebra(q, categorias, pct), pct, soma, baldes
+              % (total_quebra, sum(totais)))
+    return (execucoes.bloco_params_quebra(q, categorias, pct), pct, soma,
+            baldes, buckets)
 
 
 VALOR_LOCAL = os.path.join(RAIZ, "valor-local.json")
@@ -790,6 +798,128 @@ def pistas_de_melhoria(glpi_sla, chamados, buckets, codigos):
     return cont
 
 
+# Status que são falha de SISTEMA EXTERNO (API, portal, rede) e não do robô.
+# O robô detectou, registrou e seguiu — é o "falhas de API identificadas
+# automaticamente" do slide 4. Só padrões inequívocos; o resto não conta.
+EXTERNO = re.compile(
+    r"status code 5\d\d|\b5\d\d\b.*(error|erro)|socket hang up|econnreset|"
+    r"econnrefused|etimedout|timed? ?out|tempo esgotado|indisponivel|"
+    r"fora do ar|instabilidade|bad gateway|service unavailable", re.I)
+
+
+def grupo_do_status(st, balde):
+    """sucesso | externo | negocio | falha — a régua do volume e da prevenção.
+
+    "externo" é falha de API/portal/rede que o robô DETECTOU e registrou; no
+    balde da assertividade ela continua onde o status-local.json pôs."""
+    import status as status_mod
+    if balde == status_mod.SUCESSO:
+        return "sucesso"
+    if EXTERNO.search(normalizar(st)):
+        return "externo"
+    return "negocio" if balde == status_mod.NEGOCIO else "falha"
+
+
+def contagem_de_prevencao(soma, baldes):
+    cont = OrderedDict((g, 0) for g in ("sucesso", "externo", "negocio", "falha"))
+    for st, n in soma.items():
+        cont[grupo_do_status(st, baldes.get(st))] += n
+    print("prevenção: externo=%d  exceção de negócio=%d  falha do robô=%d"
+          % (cont["externo"], cont["negocio"], cont["falha"]))
+    return cont
+
+
+def bloco_prevencao(cont, sla, disp, pct):
+    """Slide 'O que fizemos para evitar falhas': três destaques com número.
+
+    Os números saem do banco e do GLPI; as frases são genéricas de propósito
+    e vêm com REVISAR — quem conhece o robô troca pelo que aconteceu. Nada
+    aqui fala em reprocessamento: o banco guarda só o status final, não a
+    retentativa."""
+    candidatos = []
+    if cont["externo"]:
+        candidatos.append(OrderedDict([
+            ("numero", milhar(cont["externo"])),
+            ("titulo", "falhas de API detectadas"),
+            ("texto", REVISAR + "Erros dos sistemas externos identificados e "
+                      "registrados automaticamente, sem parar a operação.")]))
+    if cont["negocio"]:
+        candidatos.append(OrderedDict([
+            ("numero", milhar(cont["negocio"])),
+            ("titulo", "casos fora da regra"),
+            ("texto", REVISAR + "Itens que não atendiam à regra de negócio, "
+                      "separados automaticamente antes de seguir no processo.")]))
+    total = sum(sla["chamados"]) if sla else 0
+    if total:
+        dentro = sum(sla["dentro_do_sla"])
+        candidatos.append(OrderedDict([
+            ("numero", "%d de %d" % (dentro, total)),
+            ("titulo", "chamados no SLA"),
+            ("texto", "Chamados do trimestre resolvidos dentro do prazo "
+                      "acordado.")]))
+    if pct is not None:
+        candidatos.append(OrderedDict([
+            ("numero", ("%.1f%%" % (int(pct * 10) / 10.0)).replace(".", ",")),
+            ("titulo", "de assertividade"),
+            ("texto", "Execuções sem falha do robô; exceção de negócio conta "
+                      "como acerto.")]))
+    if not candidatos:
+        return None
+    return OrderedDict([
+        ("destaques", candidatos[:3]),
+        ("faixa", OrderedDict([
+            ("titulo", "**Operação** protegida"),
+            ("texto", REVISAR + "o que a equipe fez no trimestre para evitar "
+                      "falhas: causas de chamado tratadas, ajustes, "
+                      "monitoramento.")])),
+    ])
+
+
+def bloco_volume(por_mes, baldes, cfg):
+    """Slide 'Volume processado': uma linha por entrega, uma coluna por mês.
+
+    As linhas de sucesso usam a frase do valor-local.json (sem número na
+    frente — o número está nas colunas); depois vêm os casos barrados, as
+    falhas externas detectadas e o total."""
+    if not por_mes:
+        return None
+    meses = list(por_mes.keys())
+    frases = {normalizar(k): v for k, v in (cfg.get("entregas") or {}).items()}
+
+    def linha(rotulo, filtro, destaque=False):
+        vals = [sum(n for st, n in por_mes[m].items() if filtro(st))
+                for m in meses]
+        d = OrderedDict([("rotulo", rotulo), ("valores", vals + [sum(vals)])])
+        if destaque:
+            d["destaque"] = True
+        return d
+
+    linhas = []
+    todos = OrderedDict()
+    for m in meses:
+        for st, n in por_mes[m].items():
+            todos[st] = todos.get(st, 0) + n
+    for st, n in sorted(todos.items(), key=lambda x: -x[1]):
+        if grupo_do_status(st, baldes.get(st)) != "sucesso" or not n:
+            continue
+        if frases and normalizar(st) not in frases:
+            continue
+        rotulo = frases.get(normalizar(st)) or REVISAR + st.lower()
+        linhas.append(linha(rotulo[:1].upper() + rotulo[1:],
+                            lambda x, st=st: x == st))
+    for grupo, rotulo in (("negocio", "Casos fora da regra, separados automaticamente"),
+                          ("externo", "Falhas de API detectadas e registradas"),
+                          ("falha", "Falhas do robô")):
+        l = linha(rotulo, lambda x, g=grupo: grupo_do_status(x, baldes.get(x)) == g)
+        if l["valores"][-1]:
+            linhas.append(l)
+    linhas.append(linha("**Total processado**", lambda x: True, True))
+    return OrderedDict([
+        ("colunas", [MESES_NOME[m[1] - 1] for m in meses] + ["Trimestre"]),
+        ("linhas", linhas),
+    ])
+
+
 # ------------------------------------------------------------------- vault
 def notas_de_robo(raizes):
     """Todo .md do vault com 'tipo: robo' no frontmatter."""
@@ -811,6 +941,39 @@ def notas_de_robo(raizes):
                     fm["_texto"] = texto
                     notas.append(fm)
     return notas
+
+
+def tabelas_da_nota(texto):
+    """A lista 'tabelas:' do frontmatter (o frontmatter() é raso e pula
+    listas, então esta lê os itens '  - x' logo abaixo da chave)."""
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", texto, re.S)
+    if not m:
+        return []
+    bloco = re.search(r"^tabelas:\s*\n((?:[ \t]+-[^\n]*\n?)+)", m.group(1), re.M)
+    if not bloco:
+        return []
+    return [i.strip().strip('"').strip("'") for i in
+            re.findall(r"^[ \t]+-\s*(.+)$", bloco.group(1), re.M)]
+
+
+def codigo_pelas_tabelas(notas, cliente, tabelas):
+    """Códigos de robô cujas notas listam a tabela da planilha — igual ou
+    com o mesmo prefixo (a planilha traz 'yank_000123', a nota traz
+    'yank_000123_filtros'). Só notas do mesmo cliente."""
+    meu = chave_cliente(cliente)
+    # nome de tabela não passa pelo normalizar(): ele troca "_" por espaço
+    alvos = [t.strip().lower() for t in tabelas if t]
+    achados = []
+    for n in notas:
+        if not n.get("codigo") or chave_cliente(n.get("cliente", "")) != meu:
+            continue
+        for t in tabelas_da_nota(n["_texto"]):
+            t = t.strip().lower()
+            if any(t == a or t.startswith(a + "_") for a in alvos):
+                if n["codigo"] not in achados:
+                    achados.append(n["codigo"])
+                break
+    return achados
 
 
 def chave_cliente(nome):
@@ -916,6 +1079,19 @@ def main():
     print("=" * 68)
     dossies = achar_dossies(achar_vault(vault))
     print("dossiês encontrados no vault: %d" % len(dossies))
+    notas = notas_de_robo(achar_vault(vault))
+    if not robo["codigo"]:
+        # OBS sem código: o vault diz de quem é a tabela. Só vale se UM
+        # código casar — dois seriam dois robôs, e aí quem escolhe é gente.
+        codigos_vault = codigo_pelas_tabelas(notas, cliente, robo["tabelas"])
+        if len(codigos_vault) == 1:
+            robo["codigo"] = codigos_vault[0]
+            print("código:  %s (a OBS não tem código; achado pelas tabelas "
+                  "da nota do robô no vault)" % robo["codigo"])
+        elif codigos_vault:
+            print("ATENÇÃO: as tabelas casam com mais de uma nota de robô: %s.\n"
+                  "         Repita com --robo <código> para escolher."
+                  % ", ".join(codigos_vault))
     dossie = casar_dossie(dossies, cliente)
     resumo = objetivo = None
     if dossie is None:
@@ -923,7 +1099,6 @@ def main():
                   % cliente)
     else:
         resumo, objetivo, origem = textos_do_dossie(dossie, robo)
-    notas = notas_de_robo(achar_vault(vault))
     if not objetivo and robo["codigo"]:
         # Sem dossiê do cliente, o objetivo sai da nota do próprio robô.
         nota = next((n for n in notas if n.get("codigo")
@@ -948,14 +1123,14 @@ def main():
         curto = None
 
     bloco_exec, pct, bloco_sla = None, None, None
-    soma, baldes, disp, pistas = {}, {}, None, None
+    soma, baldes, disp, pistas, por_mes = {}, {}, None, None, None
     codigos = [robo["codigo"]] if robo["codigo"] else []
     if not sem_banco:
         print()
         print("=" * 68)
         print("EXECUÇÕES (banco)")
         print("=" * 68)
-        bloco_exec, pct, soma, baldes = dados_execucoes(
+        bloco_exec, pct, soma, baldes, por_mes = dados_execucoes(
             robo["tabelas"], ini, fim, robo["quebra"], etiqueta_do_robo(robo))
         print()
         print("=" * 68)
@@ -997,6 +1172,10 @@ def main():
         print("\nsem bloco de %r no valor-local.json: entregas com o texto "
               "do status e horas/economia 'a confirmar'." % robo["codigo"])
     params["disponibilidade"] = disp
+    if por_mes:
+        cont = contagem_de_prevencao(soma, baldes)
+        params["volume_processado"] = bloco_volume(por_mes, baldes, cfg_valor)
+        params["prevencao"] = bloco_prevencao(cont, bloco_sla, disp, pct)
 
     pista = ("o GLPI tem %d chamado(s) de Melhoria e %d de Sustentação deste "
              "robô no trimestre" % (pistas["Melhoria"], pistas["Sustenta"])
@@ -1007,7 +1186,8 @@ def main():
             ("itens", [REVISAR + pista])])]),
         ("direita", [OrderedDict([
             ("topico", REVISAR + "o que fizemos para evitar falhas"),
-            ("itens", [REVISAR + "ajustes, prevenções, reprocessamentos"])])]),
+            ("itens", [REVISAR + "ajustes, prevenções, causas de chamado "
+                                 "tratadas"])])]),
     ])
     params["proximas_evolucoes"] = OrderedDict([
         ("esquerda", [OrderedDict([

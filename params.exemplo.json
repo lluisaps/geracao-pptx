@@ -119,5 +119,84 @@
         ]
       }
     ]
+  },
+  "volume_processado": {
+    "colunas": [
+      "Abril",
+      "Maio",
+      "Junho",
+      "Trimestre"
+    ],
+    "linhas": [
+      {
+        "rotulo": "Itens lançados no sistema de destino",
+        "valores": [
+          650,
+          700,
+          650,
+          2000
+        ]
+      },
+      {
+        "rotulo": "Cadastros conferidos e atualizados",
+        "valores": [
+          300,
+          350,
+          350,
+          1000
+        ]
+      },
+      {
+        "rotulo": "Casos fora da regra, separados automaticamente",
+        "valores": [
+          40,
+          40,
+          30,
+          110
+        ]
+      },
+      {
+        "rotulo": "Falhas de API detectadas e registradas",
+        "valores": [
+          5,
+          4,
+          3,
+          12
+        ]
+      },
+      {
+        "rotulo": "**Total processado**",
+        "valores": [
+          1000,
+          1100,
+          1200,
+          3300
+        ],
+        "destaque": true
+      }
+    ]
+  },
+  "prevencao": {
+    "destaques": [
+      {
+        "numero": "12",
+        "titulo": "falhas de API detectadas",
+        "texto": "Erros do sistema de destino registrados automaticamente, sem parar a operação."
+      },
+      {
+        "numero": "110",
+        "titulo": "casos fora da regra",
+        "texto": "Itens que não atendiam à regra de negócio, separados antes de seguir no processo."
+      },
+      {
+        "numero": "4 de 4",
+        "titulo": "chamados no SLA",
+        "texto": "Chamados do trimestre resolvidos dentro do prazo acordado."
+      }
+    ],
+    "faixa": {
+      "titulo": "**Causas de chamado** tratadas",
+      "texto": "Ajuste de tempo de espera no portal e alerta automático de credencial expirada."
+    }
   }
 }

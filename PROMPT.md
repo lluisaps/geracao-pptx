@@ -3,21 +3,32 @@
 Este arquivo tem o texto pronto para pedir um ATE a uma IA com acesso à
 máquina, e a explicação de onde sai cada pedaço do slide.
 
-O ATE mostra **valor de negócio**, não só operação. São seis slides:
+O ATE mostra **valor de negócio**, não só operação. São até nove slides
+(o modelo oficial comporta onze); os marcados com * só entram quando há dado:
 
 1. Capa
 2. **Resumo Executivo — Valor Gerado**: escopo em uma faixa, quatro cartões
    (itens processados, horas poupadas, economia estimada, disponibilidade) e
    a lista do que foi entregue no trimestre
-3. **Indicadores de Operação**: execuções e SLA lado a lado, mais os cartões
+3. \* **Horas e Valor Financeiro**: a conta aberta — itens × tempo manual,
+   dias úteis, horas × custo/hora, disponibilidade mês a mês. Só com tempo
+   manual informado
+4. **Indicadores de Operação**: execuções e SLA lado a lado, mais os cartões
    de assertividade, SLA e disponibilidade
-4. **Melhorias Entregues no Período**: o que foi entregue no robô e o que se
+5. \* **Volume Processado**: tabela mês a mês do que o robô entregou
+6. \* **O que fizemos para evitar falhas**: três números (falhas de API
+   detectadas, casos fora da regra, chamados no SLA) e uma faixa de contexto
+7. **Melhorias Entregues no Período**: o que foi entregue no robô e o que se
    fez para evitar falhas
-5. **Próximas Evoluções e Oportunidades**: o que vem para o robô e automações
+8. **Próximas Evoluções e Oportunidades**: o que vem para o robô e automações
    que outros clientes do mesmo segmento já usam
-6. Encerramento
+9. Encerramento
 
-Copie o bloco abaixo e troque **só o cabeçalho e os slides 4 e 5**. Todo o
+O agente que roda isto lê o [CLAUDE.md](CLAUDE.md) e a base em
+[conhecimento/](conhecimento/README.md) — as regras abaixo estão lá também,
+com o porquê.
+
+Copie o bloco abaixo e troque **só o cabeçalho e os slides 6, 7 e 8**. Todo o
 resto é fixo — é o que impede o assistente de reinventar o processo a cada mês.
 
 O **escopo você não escreve**: ele sai do Obsidian, e quem vai buscar é o
@@ -204,7 +215,7 @@ mensalidade, ROI ou contato.
 
 
 ════════════════════════════════════════════════════════════════════
-AUTOMAÇÕES DO SEGMENTO (slide 5, coluna da direita)
+AUTOMAÇÕES DO SEGMENTO (slide 8, coluna da direita)
 ════════════════════════════════════════════════════════════════════
 
 O script lê as notas de robô do vault, pega as da mesma área (o que vem
@@ -219,7 +230,27 @@ para este cliente e me diz o que tirou.
 
 
 ════════════════════════════════════════════════════════════════════
-SLIDE 4 — melhorias entregues no período
+SLIDE 5 — volume processado (opcional)
+════════════════════════════════════════════════════════════════════
+
+A tabela sai do banco sozinha. Volumetria que não é status do banco
+entra só se eu escrever aqui, com o número:
+  - <ex.: 350 GB de áudios tratados no trimestre>
+
+
+════════════════════════════════════════════════════════════════════
+SLIDE 6 — o que fizemos para evitar falhas
+════════════════════════════════════════════════════════════════════
+
+Os três números saem do banco e do GLPI. A faixa de baixo é minha:
+  <o que a equipe fez no trimestre para evitar falhas>
+
+Não escreve "reprocessamentos automáticos" com número — o banco não
+guarda retentativa.
+
+
+════════════════════════════════════════════════════════════════════
+SLIDE 7 — melhorias entregues no período
 ════════════════════════════════════════════════════════════════════
 
 O que foi entregue no robô
@@ -233,7 +264,7 @@ trimestre, como pista — os títulos do GLPI não dizem o que foi feito.)
 
 
 ════════════════════════════════════════════════════════════════════
-SLIDE 5 — próximas evoluções (coluna da esquerda)
+SLIDE 8 — próximas evoluções (coluna da esquerda)
 ════════════════════════════════════════════════════════════════════
 
 <tópico>
@@ -242,7 +273,7 @@ SLIDE 5 — próximas evoluções (coluna da esquerda)
 
 Os números dos tópicos saem automáticos — não escreve 1., 2., 3.
 Use **assim** para destacar: azul no escopo, negrito nas entregas e nos
-slides 4 e 5.
+slides 7 e 8.
 
 
 ════════════════════════════════════════════════════════════════════
@@ -252,7 +283,8 @@ GERAR E CONFERIR
     python gerar.py params.json ATE-<cliente>-<competência>.pptx --conferir
 
   - Os meses dos dois gráficos são os três do cabeçalho?
-  - Quais números saíram nos cartões dos slides 2 e 3?
+  - Quais números saíram nos cartões dos slides 2, 3 e 4?
+  - Quantos slides saíram e quais opcionais ficaram de fora?
   - Sobrou algum REVISAR no params.json?
   - Algum texto estourou a caixa no PNG do --conferir?
 
@@ -271,13 +303,16 @@ Me devolve o .pptx.
 | 2 | horas e economia | status de sucesso do banco × tempo manual e custo/hora do **cliente** (`valor-local.json`) |
 | 2 | disponibilidade | GLPI: chamados de Sustentação do robô (`glpi_sla.py --robo`) |
 | 2 | o que foi entregue | status de sucesso do banco + frases do `valor-local.json` |
-| 3 | execuções e assertividade | banco, via `execucoes.py` e `status.py` |
-| 3 | chamados e SLA | GLPI, via `glpi_sla.py --tudo` |
-| 4 | melhorias entregues | você, na mensagem |
-| 5 | próximas evoluções | você, na mensagem |
-| 5 | oportunidades no segmento | notas de robô do vault, sem nome de cliente |
+| 3 | horas, dias úteis, economia | mesmos números do slide 2, abertos |
+| 4 | execuções e assertividade | banco, via `execucoes.py` e `status.py` |
+| 4 | chamados e SLA | GLPI, via `glpi_sla.py --tudo` |
+| 5 | volume mês a mês | banco (status por mês) + volumetria extra da mensagem |
+| 6 | falhas detectadas, casos barrados, SLA | banco + GLPI; a faixa é da mensagem |
+| 7 | melhorias entregues | você, na mensagem |
+| 8 | próximas evoluções | você, na mensagem |
+| 8 | oportunidades no segmento | notas de robô do vault, sem nome de cliente |
 
-Os slides 4 e 5 continuam na mensagem porque são **do trimestre**: o que
+Os slides 6 a 8 continuam na mensagem porque são **do trimestre**: o que
 melhorou, o que se evitou, o que vem. O Obsidian é o que foi vendido, e isso
 não muda de um ATE para o outro.
 
