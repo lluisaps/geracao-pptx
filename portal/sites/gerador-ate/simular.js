@@ -27,8 +27,8 @@ const args = process.argv.slice(2);
 
 if (args[0] === '--servir') {
     const porta = Number(args[1]) || 4790;
-    app.listen(porta, () => {
-        console.log(`Gerador de ATE (simulação) em http://localhost:${porta}/gerador-ate`);
+    app.listen(porta, '127.0.0.1', () => {
+        console.log(`Gerador de ATE (simulação) em http://127.0.0.1:${porta}/gerador-ate`);
         console.log(`repositório: ${process.env.GERADOR_ATE_DIR || '(GERADOR_ATE_DIR não definida!)'}`);
     });
 } else {
